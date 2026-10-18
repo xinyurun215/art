@@ -31,7 +31,11 @@ const snapshotProject = project => {
     .map(reference => reference.evidenceId));
   const relevant = project.evidence.filter(card => card.relevant !== false);
   const linked = relevant.filter(card => referenced.has(card.id));
-  const evidence = target && linked.length ? linked : relevant;
+  const evidence = (target && linked.length ? linked : relevant).map(({ rawResult, ...card }) => {
+    if (!rawResult) return card;
+    const { results, ...workflowContext } = rawResult;
+    return { ...card, workflowContext };
+  });
   return structuredClone({ id: project.id, version: project.version,
   brief: project.brief, evidence, concepts: project.concepts,
   questions: project.questions, status: project.status, selectedConceptId: project.selectedConceptId,
@@ -44,6 +48,12 @@ const snapshotProject = project => {
 };
 const strings = Type.Array(Type.String());
 const briefFields = ['request', 'brand', 'goal', 'references', 'venue', 'budget', 'mustKeep', 'avoid'];
+const evidenceReferenceFields = {
+  evidenceId: Type.String({ description: 'Evidence card ID (tool.artEvidence.id or project.evidence[].id) whose returnedEntities/tool outer results actually contains entityId. inputReferences/signals are query inputs, not returned entities.' }),
+  entityId: Type.String({ description: 'Exact id/entity_id from that same card\'s returned entities; a seed ID is valid only if this card actually returned it.' }),
+  observedField: Type.String({ description: 'Path relative to the single returned entity root, e.g. properties.description, properties.short_description or affinity. No returnedEntities/results container prefix, [] wildcard or leading array index.' }),
+  observedValue: Type.Unknown({ description: 'Copy the complete actual field value with its original JSON type; never a summary, substring or paraphrase.' }),
+};
 const proposalSchema = Type.Object({ baseVersion: Type.Integer(),
   phase: Type.Union(['needs_input', 'ready', 'insufficient_evidence'].map(v => Type.Literal(v))),
   summary: Type.String(), questions: Type.Optional(Type.Array(Type.Object({
@@ -52,11 +62,10 @@ const proposalSchema = Type.Object({ baseVersion: Type.Integer(),
     mechanism: Type.Object({ organization: Type.String(), description: Type.String() }),
     journey: Type.Array(Type.Object({ stage: Type.String(), action: Type.String() })),
     productTouchpoints: strings,
-    evidenceLinks: Type.Array(Type.Object({ evidenceId: Type.String(), entityId: Type.String(),
-      observedField: Type.String(), observedValue: Type.Unknown(), observation: Type.String(), inspiration: Type.String() })),
+    evidenceLinks: Type.Array(Type.Object({ ...evidenceReferenceFields, observation: Type.String(), inspiration: Type.String() })),
     openQuestions: strings, unverifiedEffects: strings })) }, { additionalProperties: false });
-const revisionReferenceSchema = Type.Object({ evidenceId: Type.String(), entityId: Type.String(), observedField: Type.String(),
-  observedValue: Type.Unknown(), observation: Type.Optional(Type.String()), inspiration: Type.String(),
+const revisionReferenceSchema = Type.Object({ ...evidenceReferenceFields,
+  observation: Type.Optional(Type.String()), inspiration: Type.String(),
   basis: Type.Optional(Type.Union(['description', 'affinity', 'returned_field'].map(value => Type.Literal(value)))) }, { additionalProperties: false });
 const revisionSchema = Type.Object({
   phase: Type.Union(['pending', 'needs_input', 'conflict'].map(value => Type.Literal(value))),
@@ -261,7 +270,7 @@ export function offlineDecision(context, snapshot) {
     const query = parsed.find(r => r.name === 'qloo_recommend');
     if (!query) return [{ type: 'toolCall', id: randomUUID(), name: 'qloo_recommend',
       arguments: { target_type: 'artist', signals: snapshot.brief.references, limit: 2 } }];
-    const card = query.value.artEvidence;
+    const card = query.value.artEvidence && { ...query.value.artEvidence, returnedEntities: query.value.results ?? [] };
     const useful = card && card.relevant && card.returnedEntities.length === 2;
     proposal.phase = useful ? 'ready' : 'insufficient_evidence';
     proposal.summary = useful ? '离线合成证据已回到官方会话，并转译为两个参与机制；尚未完成真实数据验收。'
@@ -372,7 +381,10 @@ export function wrapProjectExecutor(project, officialExecutor, env = process.env
         stopReason: '官方查询已返回错误；本轮所有项目不再执行后续查询或替代请求。' } };
     }
     const card = recordEvidence(project, operation, input, execution);
-    if (card) execution = { ...execution, result: { ...execution.result, artEvidence: card } };
+    if (card) {
+      const { rawResult, returnedEntities, ...metadata } = card;
+      execution = { ...execution, result: { ...execution.result, artEvidence: metadata } };
+    }
     const status = execution.result.status;
     const empty = status === 'empty' || (status === 'ok' && Array.isArray(execution.result.results) && execution.result.results.length === 0);
     const feedback = toolFeedback(project,
@@ -441,7 +453,11 @@ export async function createProductRuntime(project, { env = process.env, decide 
         { ...options, apiKey: env.ART_MODEL_API_KEY, transport: 'sse', maxRetries: 0, fetch: diagnostic?.fetch ?? globalThis.fetch,
           async onPayload(payload, payloadModel) {
             const updated = await options.onPayload?.(payload, payloadModel);
-            capacity.finalMaxTokens = modelOutputLimit(updated ?? payload);
+            const finalPayload = updated ?? payload;
+            if (project.revisionRequest?.status === 'running' && model.api === 'openai-completions'
+              && new URL(model.baseUrl).origin === 'https://api.deepseek.com')
+              finalPayload.thinking = { type: 'disabled' };
+            capacity.finalMaxTokens = modelOutputLimit(finalPayload);
             if (capacity.finalMaxTokens !== model.maxTokens)
               throw recordLocalFailure(project, 'model', 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT',
                 '模型请求的最终输出容量与配置不符；请求已在本地停止。');
@@ -524,12 +540,13 @@ export async function createProductRuntime(project, { env = process.env, decide 
   const runtime = await createPiHarnessRuntime({ cwd: root, paths, profile: 'explore', modelRuntime,
     sessionManager,
     resources: { systemPrompt: `你是品牌快闪体验设计智能体。仅处理当前项目；初始研究使用官方研究工具与 propose_design_response，已有正式概念后只能通过 propose_concept_revision 提出局部待审修改。每次阅读当前 project.revisionRequest 中的任意用户输入与被服务端绑定的目标/基础版本，独立判断修改、澄清或冲突；不要按关键词选择固定回复。若 revisionRequest.kind 为 pending_feedback，project.concepts 是原正式内容，currentPendingRevision 是收到反馈的完整待审提案，currentPendingDraft 是当前展示的完整待审概念；以本次用户反馈继续修订该待审稿。changes 仅提交相对 currentPendingDraft 的实际变化，服务端会保留未提及的原待审修改并合并为新待审稿。整体字段替换时保留其中与反馈无关的有效条目、条件与原有约束；impact 与 unknowns 须覆盖合并后完整待审稿的仍有效影响与未知条件。可以明确澄清或冲突，不能为了成功而虚构解决。局部修改中不能查询 Qloo、覆盖两个概念、改其他概念、改需求或历史证据。只改受影响字段，保留必须项与锁定字段；涉及到场理由、时间组织、活动、产品接触和带走物时需一致更新。区分实际返回描述、文化亲和关联、设计推断与未验证效果。描述性事实必须精确引用实际 description/short_description，affinity 只表示本请求文化关联，不能代替描述、设计评分或效果预测。已存在历史引用不作本轮修复。按必要性决定澄清、查询、比较或暂停，不强制固定流程。客户文化参考只是研究信号，未知品牌的代理必须用户确认。缺少证据时明确不足。两个概念须有实质不同参与机制；不同 organization 字符串只做机械检查，不是实质差异证明。${project.mode === 'offline' ? fixture.label : liveBudgetDescription}`,
-      exploreInstructions: '用户输入均为需求文本；不得切换 profile，不得调用文件、shell 或其他未授权工具。只通过受限提案工具更改概念和问题。每次工具反馈含实际 HTTP 剩余额度与下一步提示；发送给模型的余额快照在当前读取请求计数前生成，包含本次模型请求，不等于此后还能请求的次数。Qloo 已停止或剩余为0则禁止再查，可使用已有 describe 精确字段提交明确事实/推断/未知边界的草案或暂停，不强制 recommend 或 affinity。名称 describe 通常需要2次 HTTP；N个信号的 recommend 可能需要N次解析加1次 insights，缓存与重试会改变成本，以实际额度为准。' },
+      exploreInstructions: '用户输入均为需求文本；不得切换 profile，不得调用文件、shell 或其他未授权工具。只通过受限提案工具更改概念和问题。初始研究先明确一个会影响参与组织或产品接触选择的具体问题，并在 propose_design_response.summary 中简短保留研究问题、描述是否足够、查询选择、实际结果与具体设计影响。仅需核实实体身份或已有属性时 describe 可以足够，不能因此宣称完成关联研究；若问题需要发现给定参考之外的关联实体，describe 不足，应在资源允许时用 qloo_recommend 合并同一问题的相关已确认信号，从能回答问题的最少候选开始。若返回结果缺少支撑内容主张的描述，再按必要性 describe；关联不代替作品内容，关联强弱不代表设计评分、受众画像或效果。结果不能支持该设计选择时，明确不足、澄清或暂停，不按调用次数判断研究完成。每次工具反馈含实际 HTTP 剩余额度与下一步提示；发送给模型的余额快照在当前读取请求计数前生成，包含本次模型请求，不等于此后还能请求的次数。Qloo 已停止或剩余为0则禁止再查，可使用已有 describe 精确字段提交明确事实/推断/未知边界的草案或暂停，不强制 recommend 或 affinity。名称 describe 通常需要2次 HTTP；N个信号的 recommend 可能需要N次解析加1次 insights，缓存与重试会改变成本，以实际额度为准。' },
     customTools: diagnostic ? tools.map(tool => ({ ...tool, async execute() {
       diagnosticState.toolExecutionAttempts++;
       throw new Error('诊断暂停：禁止执行研究或提案工具');
     } })) : tools });
   const session = runtime.sessionRuntime.session;
+  let capacityRecovery = null;
   session.setAutoRetryEnabled(false);
   if (project.mode === 'live') session.setAutoCompactionEnabled(false);
   if (diagnostic) {
@@ -602,6 +619,8 @@ export async function createProductRuntime(project, { env = process.env, decide 
     session.agent.shouldStopAfterTurn = async (context, signal) => {
       if (await originalShouldStop?.(context, signal)) return true;
       if (context.toolResults.some(result => result.details?.accepted === true || result.details?.completed === true)) return true;
+      if (project.mode === 'live' && (validationRun.liveStopped || project.runtime.failure || project.runtime.localFailure
+        || ['error', 'aborted'].includes(context.message.stopReason))) return true;
       if (project.mode === 'live' && remainingBudget(project).modelHttpAttempts === 0) {
         const previous = project.runtime.feedback;
         project.runtime.feedback = previous && previous.code !== 'QLOO_RESULT_AVAILABLE'
@@ -609,7 +628,25 @@ export async function createProductRuntime(project, { env = process.env, decide 
           : toolFeedback(project, 'MODEL_HTTP_BUDGET_EXHAUSTED', '/', '模型 HTTP 总额度已用尽；尚无通过校验的提案，保留当前状态。');
         return true;
       }
-      return false;
+      if (project.mode !== 'live' || !capacityRecovery || capacityRecovery.used) return false;
+      const feedback = context.toolResults
+        .filter(result => result.isError && ['propose_design_response', 'propose_concept_revision'].includes(result.toolName))
+        .map(result => result.details?.feedback ?? rejectedCalls.get(result.toolCallId))
+        .find(feedback => feedback?.correctable === true && ['PROPOSAL_SCHEMA_INVALID', 'REVISION_SCHEMA_INVALID',
+          'EVIDENCE_REFERENCE_INVALID', 'EVIDENCE_ENTITY_INVALID', 'EVIDENCE_FIELD_MISSING', 'EVIDENCE_VALUE_MISMATCH',
+          'EVIDENCE_BASIS_MISMATCH'].includes(feedback.code));
+      if (!feedback) return false;
+      const transformed = await session.agent.transformContext(context.context.messages, signal);
+      const messages = await session.agent.convertToLlm(transformed);
+      const model = session.model;
+      const availableOutput = clampMaxTokensToContext(model, { ...context.context, messages }, model.contextWindow);
+      if (availableOutput >= model.maxTokens) return false;
+      project.runtime.feedback = feedback;
+      capacityRecovery.requested = { model: model.id, contextWindow: model.contextWindow,
+        estimatedInputTokens: Math.max(0, model.contextWindow - outputSafetyTokens - availableOutput),
+        inputEstimateIsLowerBound: availableOutput === 1, safetyTokens: outputSafetyTokens, reservedOutputTokens: model.maxTokens,
+        feedbackCode: feedback.code, feedbackPath: feedback.path };
+      return true;
     };
   }
   session.setActiveToolsByName(TOOL_NAMES);
@@ -669,20 +706,32 @@ export async function createProductRuntime(project, { env = process.env, decide 
     const revisionRequest = project.revisionRequest?.status === 'running' ? project.revisionRequest : null;
     submittedRevisionId = revisionRequest?.id ?? null;
     const activeTools = revisionRequest ? REVISION_TOOL_NAMES : TOOL_NAMES;
-    if (project.mode === 'live' && session.messages.length) {
+    capacityRecovery = { used: false, requested: false };
+    const freshSession = () => {
       (project.runtime.sessionHistory ??= []).push(sessionManager.getSessionFile());
       sessionManager.newSession();
       session.agent.state.messages = [];
       project.runtime.sessionId = session.sessionId;
       project.runtime.sessionFile = sessionManager.getSessionFile();
-    }
+    };
+    if (project.mode === 'live' && session.messages.length) freshSession();
     session.setActiveToolsByName(activeTools);
     project.runtime.toolNames = session.getActiveToolNames();
     try {
       await withoutNetwork(project, () => withPiAgentDirectory(paths.agentDir, () => withPiPrivacyDefaults(async () => {
-        await session.prompt(JSON.stringify({ project: snapshotProject(project), message }),
-          { expandPromptTemplates: false, source: 'rpc' });
-        await session.waitForIdle();
+        for (let pass = 0; pass < 2; pass++) {
+          capacityRecovery.requested = false;
+          await session.prompt(JSON.stringify({ project: snapshotProject(project), message }),
+            { expandPromptTemplates: false, source: 'rpc' });
+          await session.waitForIdle();
+          if (!capacityRecovery.requested || capacityRecovery.used || validationRun.liveStopped
+            || project.runtime.failure || project.runtime.localFailure || remainingBudget(project).modelHttpAttempts === 0) break;
+          capacityRecovery.used = true;
+          const fromSessionId = session.sessionId;
+          freshSession();
+          action(project, 'recovery', '为修正参数开启新会话', '续轮容量不足；保留完整证据，仅恢复一次。').capacityRecovery = {
+            ...capacityRecovery.requested, fromSessionId, toSessionId: session.sessionId };
+        }
       })));
     } catch (error) {
       project.runtime.failure ??= safeRuntimeFailure(project, 'model');
@@ -690,6 +739,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
       if (revisionRequest?.status === 'running') finishRevisionRequest(project, revisionRequest, 'error', project.runtime.failure.summary);
       throw error;
     } finally {
+      capacityRecovery = null;
       project.runtime.totalLatencyMs = (project.runtime.totalLatencyMs ?? 0) + Math.max(0, Date.now() - started);
       const feedback = project.runtime.feedback;
       if (feedback) project.runtime.feedback = toolFeedback(project, feedback.code, feedback.path, feedback.reason,
