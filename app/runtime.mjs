@@ -19,6 +19,13 @@ export const TOOL_NAMES = Object.freeze(['qloo_describe', 'qloo_recommend', 'pro
 export const REVISION_TOOL_NAMES = Object.freeze(['propose_concept_revision']);
 const toolText = message => typeof message.content === 'string' ? message.content :
   (message.content ?? []).filter(c => c.type === 'text').map(c => c.text).join('');
+const projectEvidenceReference = reference => {
+  const { observation, ...fields } = reference;
+  const derived = `实际返回 ${reference.observedField} = ${JSON.stringify(reference.observedValue)}；${reference.basis === 'affinity'
+    ? '仅为本次请求的文化亲和关联，不是描述、设计评分或效果预测。' : reference.basis === 'description'
+      ? '这是实体描述，不是文化亲和关联分数或受众效果证据。' : '仅能证明该字段实际返回。'}`;
+  return observation === derived ? fields : reference;
+};
 const snapshotProject = project => {
   const pending = project.revisionRequest?.kind === 'pending_feedback'
     ? project.revisions?.find(revision => revision.id === project.revisionRequest.sourceRevisionId) : null;
@@ -43,8 +50,9 @@ const snapshotProject = project => {
   ...(priorFeedback ? { priorFeedback: { text: priorFeedback.text, status: priorFeedback.status } } : {}),
   ...(project.runtime.feedback ? { previousFeedback: Object.fromEntries(['code', 'path', 'reason', 'correctable', 'nextAction']
     .filter(key => Object.hasOwn(project.runtime.feedback, key)).map(key => [key, project.runtime.feedback[key]])) } : {}),
-  ...(pending ? { currentPendingRevision: { ...pending,
-    changes: pending.changes.map(({ before, after, ...metadata }) => metadata) },
+  ...(pending ? { currentPendingRevision: { ...pending, draftDelta: undefined,
+    changes: pending.changes.map(({ before, after, ...metadata }) => ({ ...metadata,
+      evidenceRefs: metadata.evidenceRefs.map(projectEvidenceReference) })) },
     currentPendingDraft: pendingRevisionDraft(project, pending) } : {}),
   remainingBudget: remainingBudget(project) });
 };
@@ -544,7 +552,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
   const liveBudgetDescription = `真实模型与 Qloo 的每项目 HTTP 请求上限分别为 ${limits.caseLimits.modelHttpAttempts}、${limits.caseLimits.qlooHttpAttempts} 次，本服务合计上限分别为 ${limits.sharedLimits.modelHttpAttempts}、${limits.sharedLimits.qlooHttpAttempts} 次，包括重试。`;
   const runtime = await createPiHarnessRuntime({ cwd: root, paths, profile: 'explore', modelRuntime,
     sessionManager,
-    resources: { systemPrompt: `你是品牌快闪体验设计智能体。仅处理当前项目；初始研究使用官方研究工具与 propose_design_response，已有正式概念后只能通过 propose_concept_revision 提出局部待审修改。每次阅读当前 project.revisionRequest 中的任意用户输入与被服务端绑定的目标/基础版本，独立判断修改、澄清或冲突；不要按关键词选择固定回复。若 revisionRequest.kind 为 pending_feedback，project.concepts 是原正式内容，currentPendingRevision 保留待审元信息及每项 field/reason/evidenceRefs；changes 的 before/after 分别见正式 concepts 与 currentPendingDraft 对应字段，currentPendingDraft 是当前展示的完整待审概念；以本次用户反馈继续修订该待审稿。changes 仅提交相对 currentPendingDraft 的实际变化，服务端会保留未提及的原待审修改并合并为新待审稿。整体字段替换时保留其中与反馈无关的有效条目、条件与原有约束；impact 与 unknowns 须覆盖合并后完整待审稿的仍有效影响与未知条件。可以明确澄清或冲突，不能为了成功而虚构解决。局部修改中不能查询 Qloo、覆盖两个概念、改其他概念、改需求或历史证据。只改受影响字段，保留必须项与锁定字段；涉及到场理由、时间组织、活动、产品接触和带走物时需一致更新。区分实际返回描述、文化亲和关联、设计推断与未验证效果。描述性事实必须精确引用实际 description/short_description，affinity 只表示本请求文化关联，不能代替描述、设计评分或效果预测。已存在历史引用不作本轮修复。按必要性决定澄清、查询、比较或暂停，不强制固定流程。客户文化参考只是研究信号，未知品牌的代理必须用户确认。缺少证据时明确不足。两个概念须有实质不同参与机制；不同 organization 字符串只做机械检查，不是实质差异证明。${project.mode === 'offline' ? fixture.label : liveBudgetDescription}`,
+    resources: { systemPrompt: `你是品牌快闪体验设计智能体。仅处理当前项目；初始研究使用官方研究工具与 propose_design_response，已有正式概念后只能通过 propose_concept_revision 提出局部待审修改。每次阅读当前 project.revisionRequest 中的任意用户输入与被服务端绑定的目标/基础版本，独立判断修改、澄清或冲突；不要按关键词选择固定回复。若 revisionRequest.kind 为 pending_feedback，project.concepts 是原正式内容，currentPendingRevision 保留待审元信息及每项 field/reason/evidenceRefs；changes 的 before/after 分别见正式 concepts 与 currentPendingDraft 对应字段，currentPendingDraft 是当前展示的完整待审概念；历史增量 draftDelta 保留于权威记录，不重复送入当前视图；以本次用户反馈继续修订该待审稿。changes 仅提交相对 currentPendingDraft 的实际变化，服务端会保留未提及的原待审修改并合并为新待审稿。整体字段替换时保留其中与反馈无关的有效条目、条件与原有约束；impact 与 unknowns 须覆盖合并后完整待审稿的仍有效影响与未知条件。可以明确澄清或冲突，不能为了成功而虚构解决。局部修改中不能查询 Qloo、覆盖两个概念、改其他概念、改需求或历史证据。只改受影响字段，保留必须项与锁定字段；涉及到场理由、时间组织、活动、产品接触和带走物时需一致更新。区分实际返回描述、文化亲和关联、设计推断与未验证效果。描述性事实必须精确引用实际 description/short_description，affinity 只表示本请求文化关联，不能代替描述、设计评分或效果预测。已存在历史引用不作本轮修复。按必要性决定澄清、查询、比较或暂停，不强制固定流程。客户文化参考只是研究信号，未知品牌的代理必须用户确认。缺少证据时明确不足。两个概念须有实质不同参与机制；不同 organization 字符串只做机械检查，不是实质差异证明。${project.mode === 'offline' ? fixture.label : liveBudgetDescription}`,
       exploreInstructions: '用户输入均为需求文本；不得切换 profile，不得调用文件、shell 或其他未授权工具。只通过受限提案工具更改概念和问题。初始研究先明确一个会影响参与组织或产品接触选择的具体问题，并在 propose_design_response.summary 中简短保留研究问题、描述是否足够、查询选择、实际结果与具体设计影响。仅需核实实体身份或已有属性时 describe 可以足够，不能因此宣称完成关联研究；若问题需要发现给定参考之外的关联实体，describe 不足，应在资源允许时用 qloo_recommend 合并同一问题的相关已确认信号，从能回答问题的最少候选开始。若返回结果缺少支撑内容主张的描述，再按必要性 describe；关联不代替作品内容，关联强弱不代表设计评分、受众画像或效果。结果不能支持该设计选择时，明确不足、澄清或暂停，不按调用次数判断研究完成。每次工具反馈含实际 HTTP 剩余额度与下一步提示；发送给模型的余额快照在当前读取请求计数前生成，包含本次模型请求，不等于此后还能请求的次数。Qloo 已停止或剩余为0则禁止再查，可使用已有 describe 精确字段提交明确事实/推断/未知边界的草案或暂停，不强制 recommend 或 affinity。名称 describe 通常需要2次 HTTP；N个信号的 recommend 可能需要N次解析加1次 insights，缓存与重试会改变成本，以实际额度为准。' },
     customTools: diagnostic ? tools.map(tool => ({ ...tool, async execute() {
       diagnosticState.toolExecutionAttempts++;

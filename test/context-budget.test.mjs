@@ -536,13 +536,15 @@ test('saved pending-feedback state starts a fresh live context and preserves its
   } finally { await runtime.dispose(); }
 });
 
-test('pending feedback sends reconstructable changes once and retains complete draft metadata within capacity', async t => {
+test('pending feedback keeps current draft and change metadata within capacity while historical delta stays authoritative', async t => {
   const { project } = replay(t);
   const target = project.concepts[0], pending = project.revisions[0];
   target.mechanism.description = 'Synthetic confirmed material observation. '.repeat(450);
   pending.changes[0].before = structuredClone(target.mechanism);
   pending.changes[0].after.description = 'Synthetic revised material observation. '.repeat(450);
-  pending.draftDelta = [{ field: 'mechanism', before: 'Synthetic intermediate value', after: 'Synthetic current value' }];
+  pending.draftDelta = [{ field: 'mechanism',
+    before: { organization: 'Synthetic earlier organization', description: 'Synthetic historical observation. '.repeat(700) },
+    after: structuredClone(pending.changes[0].after), reason: 'Synthetic historical change reason', evidenceRefs: [] }];
   project.revisionRequest.status = 'error';
   beginPendingFeedback(project, pending.id, { baseVersion: project.version, text: 'Synthetic follow-up for the complete current draft' });
   const before = authority(project);
@@ -557,14 +559,50 @@ test('pending feedback sends reconstructable changes once and retains complete d
     assert.deepEqual(current.concepts, before.concepts);
     assert.deepEqual(current.currentPendingDraft, { ...before.concepts[0],
       ...Object.fromEntries(before.revisions[0].changes.map(change => [change.field, change.after])) });
-    assert.deepEqual(current.currentPendingRevision, { ...before.revisions[0],
-      changes: before.revisions[0].changes.map(({ before, after, ...metadata }) => metadata) });
+    const { draftDelta, ...currentMetadata } = before.revisions[0];
+    assert(!Object.hasOwn(current.currentPendingRevision, 'draftDelta'));
+    assert.deepEqual(current.currentPendingRevision, { ...currentMetadata,
+      changes: currentMetadata.changes.map(({ before, after, ...metadata }) => metadata) });
     const reconstructed = { ...current.currentPendingRevision, changes: current.currentPendingRevision.changes.map(change => ({ ...change,
       before: current.concepts.find(concept => concept.id === pending.targetConceptId)[change.field],
       after: current.currentPendingDraft[change.field] })) };
-    assert.deepEqual(reconstructed, before.revisions[0]);
+    assert.deepEqual(reconstructed, currentMetadata);
     assert.deepEqual(authority(project), before);
+    assert.deepEqual(project.revisions[0].draftDelta, draftDelta);
     assert.equal(guarded.ledger.modelHttpAttempts, 1);
+    assert.equal(guarded.ledger.qlooHttpAttempts, 0);
+  } finally { await runtime.dispose(); }
+});
+
+test('pending change reference view omits only canonical derived observations and preserves unique observations', async t => {
+  const { project } = replay(t);
+  const entity = project.evidence[0].returnedEntities[0];
+  const pending = proposeRevision(project, { requestId: project.revisionRequest.id, phase: 'pending',
+    summary: 'Synthetic evidence projection draft', changes: [{ field: 'mechanism',
+      after: { organization: 'Synthetic independent observation', description: '触摸样本并独立记录，再互读' },
+      reason: 'Synthetic current change reason', evidenceRefs: [{ evidenceId: project.evidence[0].id,
+        entityId: entity.entity_id, observedField: 'properties.short_description',
+        observedValue: entity.properties.short_description, inspiration: 'Synthetic design inference; effect unknown' }] }],
+    impact: ['Synthetic current scope'], unknowns: ['Synthetic feasibility unknown'] });
+  const canonical = structuredClone(pending.changes[0].evidenceRefs[0]);
+  const unique = { ...canonical, observation: 'Unique historical observation, retain this wording' };
+  pending.changes[0].evidenceRefs.push(unique);
+  beginPendingFeedback(project, pending.id, { baseVersion: project.version, text: 'Synthetic follow-up preserving exact evidence' });
+  const before = authority(project), { bodies, guarded } = mockTransport();
+  const runtime = await createProductRuntime(project, { env, diagnostic: { fetch: guarded.fetch } });
+  try {
+    await runtime.submit(project.revisionRequest.text);
+    assert.equal(bodies.length, 1);
+    const user = bodies[0].messages.find(message => message.role === 'user');
+    const current = JSON.parse(typeof user.content === 'string' ? user.content : user.content.map(block => block.text ?? '').join('')).project;
+    const references = current.currentPendingRevision.changes[0].evidenceRefs;
+    const { observation, ...exactFields } = canonical;
+    assert(!Object.hasOwn(references[0], 'observation'));
+    assert.deepEqual(references[0], exactFields);
+    assert.deepEqual({ ...references[0], observation }, canonical);
+    assert.deepEqual(references[1], unique);
+    assert.deepEqual(current.concepts, before.concepts);
+    assert.deepEqual(authority(project), before);
     assert.equal(guarded.ledger.qlooHttpAttempts, 0);
   } finally { await runtime.dispose(); }
 });
