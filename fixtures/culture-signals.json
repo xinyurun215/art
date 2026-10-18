@@ -1,0 +1,12 @@
+{
+  "label": "离线合成夹具；虚构实体，非 Qloo 数据、非真实受众证据",
+  "source": "local:fixtures/culture-signals.json",
+  "synthetic": true,
+  "sufficient": [
+    { "id": "fixture:communal-rhythm", "name": "虚构样本·共同节拍", "type": "synthetic:culture-signal", "properties": { "participation": "shared rhythm", "format": "scheduled collective session", "fixtureNote": "用于检验集体定时机制的转译链路" } },
+    { "id": "fixture:personal-story", "name": "虚构样本·个人片段", "type": "synthetic:culture-signal", "properties": { "participation": "self-directed narrative", "format": "individual exploration", "fixtureNote": "用于检验个人自主机制的转译链路" } }
+  ],
+  "irrelevant": [
+    { "id": "fixture:unrelated-category", "name": "虚构样本·无关资料", "type": "synthetic:unrelated", "properties": { "topic": "unrelated technical catalog", "fixtureNote": "该返回不能支持快闪体验设计选择" } }
+  ]
+}

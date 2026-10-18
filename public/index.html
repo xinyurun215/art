@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>品牌快闪 · 提案工作台</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#proposal-board">跳到提案板</a>
+  <header class="app-header">
+    <a class="wordmark" href="/" aria-label="品牌快闪提案工作台首页"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span><span>品牌快闪<span class="wordmark-divider">/</span>提案工作台</span></a>
+    <div class="header-status"><span class="status-dot" aria-hidden="true"></span><span id="header-mode">本地工作空间</span></div>
+  </header>
+
+  <section class="test-banner" aria-labelledby="test-label">
+    <div class="test-banner-copy"><span class="banner-label" id="test-label">离线合成验收</span><span id="mode-explanation">模拟模型与夹具；不是真实 Qloo 查询，不构成客户或效果证据。</span></div>
+    <div class="test-controls">
+      <label for="mode">新项目方式</label>
+      <select id="mode" aria-describedby="config-status"><option value="offline">模拟模型与夹具</option><option value="live" disabled>真实服务 · 未配置</option></select>
+      <label for="scenario">验收场景</label>
+      <select id="scenario"><option value="sufficient">证据充分</option><option value="failure">查询失败</option><option value="irrelevant">结果无关</option></select>
+    </div>
+  </section>
+  <p class="config-status" id="config-status" role="status">正在读取服务配置…</p>
+  <div id="connection-error" class="connection-error" role="alert" hidden></div>
+
+  <main class="workspace">
+    <aside class="project-rail" aria-label="需求与智能体对话">
+      <section class="rail-section brief-section" aria-labelledby="brief-heading">
+        <div class="section-heading"><h1 id="brief-heading">从一份需求开始</h1><span class="eyebrow">项目输入</span></div>
+        <p class="section-description">先写已知的。影响下一步的缺口，智能体会继续追问。</p>
+        <div class="demo-controls"><span>合成案例</span><button type="button" class="text-button" id="load-demo">完整示例</button><span class="demo-separator" aria-hidden="true">/</span><button type="button" class="text-button" id="load-ambiguous">待澄清示例</button></div>
+        <form id="brief-form">
+          <label class="field-label" for="request">想做什么 <span>必填</span></label>
+          <textarea id="request" name="request" rows="5" required placeholder="例如：为一个新运动鞋系列设计品牌快闪，让来访者通过试穿理解产品。还有哪些条件没定，也可以直接写。"></textarea>
+          <details class="optional-fields">
+            <summary>补充已知条件 <span id="optional-count">都可以暂时留空</span></summary>
+            <div class="field-grid">
+              <div><label class="field-label" for="brand">品牌 / 产品</label><input id="brand" name="brand" placeholder="名称或产品描述"></div>
+              <div><label class="field-label" for="goal">活动目标</label><input id="goal" name="goal" placeholder="希望访客理解什么"></div>
+              <div class="full"><label class="field-label" for="references">文化参考 <span>待研究信号</span></label><input id="references" name="references" placeholder="音乐、电影等；不等同于受众画像"></div>
+              <div class="full"><label class="field-label" for="venue">城市 / 场地</label><input id="venue" name="venue" placeholder="未知可留空"></div>
+              <div><label class="field-label" for="budget">预算范围</label><input id="budget" name="budget" placeholder="未知可留空"></div>
+              <div><label class="field-label" for="mustKeep">必须保留</label><input id="mustKeep" name="mustKeep" placeholder="例如：试穿"></div>
+              <div class="full"><label class="field-label" for="avoid">禁止 / 避免</label><input id="avoid" name="avoid" placeholder="例如：现场表演、强制注册"></div>
+            </div>
+          </details>
+          <button class="primary-button" id="create-project" type="submit"><span>开始研究</span><span aria-hidden="true">↗</span></button>
+          <p class="form-note" id="create-note">输入会作为客户提供信息保留，未经独立核实。</p>
+        </form>
+      </section>
+
+      <section class="rail-section conversation-section" aria-labelledby="conversation-heading">
+        <div class="section-heading"><h2 id="conversation-heading">与智能体继续</h2><span class="eyebrow" id="session-label">尚未开始</span></div>
+        <div class="conversation-log" id="messages" role="log" aria-label="项目对话" aria-live="polite"><p class="empty-chat">补充条件、回答追问，都在同一个项目里继续。</p></div>
+        <form id="message-form">
+          <label class="sr-only" for="message">回复智能体</label>
+          <textarea id="message" rows="2" placeholder="先开始一份项目，再继续对话" disabled></textarea>
+          <button class="send-button" id="send-message" type="submit" disabled>发送回复 <span aria-hidden="true">↑</span></button>
+        </form>
+        <details class="activity-details" id="activity-details"><summary>行动记录 <span id="action-count">0</span></summary><ol class="action-list" id="actions"><li class="empty-activity">开始后显示查询与决策记录。</li></ol></details>
+      </section>
+    </aside>
+
+    <section class="proposal-board" id="proposal-board" aria-labelledby="board-heading" tabindex="-1">
+      <div class="board-heading-row"><div><p class="eyebrow">当前项目 · 早期体验提案</p><h2 id="board-heading">让设计选择有据可循</h2></div><div class="version-stamp" id="version-stamp">待建立项目</div></div>
+      <div class="project-status" id="project-status" role="status" aria-live="polite"><span class="phase-mark" aria-hidden="true"></span><div><strong>工作台已就绪</strong><p>写下需求，研究证据与两个不同的参与机制会出现在这里。</p></div></div>
+      <div id="project-context"></div>
+      <section id="questions-panel" class="questions-panel" aria-labelledby="questions-heading" hidden></section>
+
+      <section class="evidence-section" aria-labelledby="evidence-heading">
+        <div class="board-section-heading"><div><p class="eyebrow">研究依据</p><h3 id="evidence-heading">文化证据</h3></div><span class="section-count" id="evidence-count">尚无查询</span></div>
+        <div class="evidence-list" id="evidence"><div class="empty-evidence"><span class="empty-symbol" aria-hidden="true">↳</span><div><strong>先确认输入，再检查返回了什么</strong><p>每张卡保留查询背景、实际字段与来源。关联只能启发设计，不能预测效果。</p></div></div></div>
+      </section>
+
+      <section class="concept-section" aria-labelledby="concept-heading">
+        <div class="board-section-heading"><div><p class="eyebrow">方案比较</p><h3 id="concept-heading">两种参与方式</h3></div><span class="quiet-label">同一需求 · 不同机制</span></div>
+        <div class="concept-grid" id="concepts"><article class="concept-placeholder"><span class="concept-letter">A</span><h4>一个共同发生的时刻</h4><p>生成后，查看到场理由、参与机制与完整体验旅程。</p><div class="placeholder-rule"></div><span>等待研究结果</span></article><article class="concept-placeholder"><span class="concept-letter">B</span><h4>另一种接触产品的方法</h4><p>两个概念的区别应体现在参与和产品互动方式。</p><div class="placeholder-rule"></div><span>等待研究结果</span></article></div>
+      </section>
+      <footer class="board-footer"><span>早期提案，可讨论、可追溯。</span><span>场地安全、版权、报价与实际效果需另行核实。</span></footer>
+    </section>
+  </main>
+</body>
+</html>

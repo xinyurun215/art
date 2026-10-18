@@ -1,0 +1,17 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.art-runtime/
+.vercel/
+.netlify/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local evidence, sessions, API responses and machine-specific validation data.
+/validation/*
+!/validation/deepseek-diagnostic/
+/validation/deepseek-diagnostic/*
+!/validation/deepseek-diagnostic/diagnose.mjs
