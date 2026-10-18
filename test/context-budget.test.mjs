@@ -215,7 +215,8 @@ async function contractRecovery(t, mode = 'proposal', condition = 'accept') {
   globalThis.fetch = budgetedFetch(async (url, options) => {
     assert.equal(new URL(String(url)).origin, env.ART_MODEL_BASE_URL, 'synthetic transport must never query Qloo');
     const body = JSON.parse(options.body); bodies.push(body); states.push(authority(project));
-    const invalid = (bodies.length === 1 || condition === 'reject-again') && condition !== 'schema';
+    const invalid = (bodies.length === 1 || condition === 'reject-again')
+      && !['schema', 'mechanism-extra-key', 'mechanism-extra-key-again', 'no-change'].includes(condition) && !condition.startsWith('shape-');
     const link = { ...reference, ...(invalid ? { observedField: 'returnedEntities[].properties.description' } : {}) };
     let name = 'propose_design_response';
     let args = { baseVersion: project.version, phase: 'ready', summary: 'Synthetic contract candidate', questions: [],
@@ -230,6 +231,16 @@ async function contractRecovery(t, mode = 'proposal', condition = 'accept') {
         reason: 'Synthetic bounded revision', evidenceRefs: [link] }], impact: ['记录顺序改变'], unknowns: ['效果未验证'] };
       if (condition === 'locked') Object.assign(args.changes[0], { field: 'productTouchpoints', after: ['触摸样本的新锁定变更'], evidenceRefs: [] });
       if (condition === 'schema' && bodies.length === 1) delete args.impact;
+      if (condition === 'mechanism-extra-key-again' || condition === 'mechanism-extra-key' && bodies.length === 1)
+        args.changes[0].after[''] = '';
+      if (condition.startsWith('shape-')) {
+        const field = condition.slice(6);
+        const journey = ['到场', '参与', '带走'].map(stage => ({ stage, action: '触摸样本并互读记录' }));
+        const values = { title: ['', '合成修订标题'], journey: [[{ ...journey[0], '': '' }, ...journey.slice(1)], journey],
+          evidenceLinks: [{}, [...project.concepts[0].evidenceLinks, reference]], unverifiedEffects: [[], ['合成效果仍未验证']] };
+        Object.assign(args.changes[0], { field, after: values[field][bodies.length === 1 ? 0 : 1] });
+      }
+      if (condition === 'no-change') args.changes[0].after = structuredClone(project.revisions[0].changes[0].after);
     }
     if (condition === 'exhausted') project.usage.modelHttpAttempts = remainingBudget(project).caseLimits.modelHttpAttempts;
     if (condition === 'global-stop') {
@@ -309,18 +320,57 @@ test('one fresh session accepts a real contract correction after the continued c
 });
 
 test('a repeated invalid contract gets only one fresh session and then the original capacity stop', async t => {
-  const { project, before, bodies, states, originalSession, endedHash } = await contractRecovery(t, 'proposal', 'reject-again');
-  assert.equal(bodies.length, 2);
-  assert.deepEqual(states, [before, before]);
-  assert.deepEqual(authority(project), before);
-  assert.deepEqual(project.runtime.sessionHistory, [originalSession]);
-  assert.equal(project.actions.filter(action => action.type === 'recovery').length, 1);
-  assert.equal(fileHash(originalSession), endedHash);
-  assert.equal(project.runtime.failure?.code, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT');
-  assert.equal(project.usage.modelHttpAttempts, 2);
-  assert.equal(project.usage.modelCalls, 3);
-  assert.equal(project.usage.qlooHttpAttempts, 0);
-  assert.equal(validationRun.liveStopped, true);
+  for (const [mode, condition] of [['proposal', 'reject-again'], ['revision', 'mechanism-extra-key-again']]) {
+    const { project, before, bodies, states, events, originalSession, endedHash } = await contractRecovery(t, mode, condition);
+    assert.equal(bodies.length, 2);
+    assert.deepEqual(states, [before, before]);
+    assert.deepEqual(authority(project), before);
+    assert.deepEqual(project.runtime.sessionHistory, [originalSession]);
+    assert.equal(project.actions.filter(action => action.type === 'recovery').length, 1);
+    assert.equal(fileHash(originalSession), endedHash);
+    assert.equal(project.runtime.failure?.code, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT');
+    assert.equal(project.usage.modelHttpAttempts, 2);
+    assert.equal(project.usage.modelCalls, 3);
+    assert.equal(project.usage.qlooHttpAttempts, 0);
+    assert.equal(validationRun.liveStopped, true);
+    if (mode === 'revision') assert(events.every(event => event.feedback?.code === 'REVISION_SCHEMA_INVALID'
+      && event.feedback.path === '/changes/0/after'));
+  }
+});
+
+test('revision field shapes including a mechanism empty key stay strict and recover once to a legal pending draft', async t => {
+  for (const condition of ['mechanism-extra-key', 'shape-title', 'shape-journey', 'shape-evidenceLinks', 'shape-unverifiedEffects']) {
+    const { project, before, bodies, states, events, originalSession, endedHash, beforeToolCalls }
+      = await contractRecovery(t, 'revision', condition);
+    assert.equal(bodies.length, 2, condition);
+    assert.equal(beforeToolCalls, 2, 'Unknown after passes SDK schema preflight; both candidates reach strict business validation');
+    assert.equal(events[0].isError, true);
+    assert.equal(events[0].feedback.code, 'REVISION_SCHEMA_INVALID');
+    assert.equal(events[0].feedback.path, '/changes/0/after');
+    assert.equal(events[0].feedback.correctable, true);
+    assert.equal(events[1].completed, true);
+    assert.deepEqual(states, [before, before]);
+    assert.deepEqual(project.concepts, before.concepts, 'both official A and B remain unchanged');
+    assert.deepEqual(project.evidence, before.evidence);
+    assert.deepEqual(project.brief, before.brief);
+    assert.deepEqual(project.lockedFields, before.lockedFields);
+    assert.equal(project.version, before.version);
+    assert.equal(project.revisions.at(-1).status, 'pending');
+    if (condition === 'mechanism-extra-key')
+      assert.deepEqual(Object.keys(project.revisions.at(-1).changes[0].after).sort(), ['description', 'organization']);
+    const user = bodies[1].messages.find(message => message.role === 'user');
+    const current = JSON.parse(typeof user.content === 'string' ? user.content : user.content.map(block => block.text ?? '').join(''));
+    assert.deepEqual(current.project.evidence.map(card => card.returnedEntities), before.evidence.map(card => card.returnedEntities));
+    assert.equal(current.project.previousFeedback.code, 'REVISION_SCHEMA_INVALID');
+    assert.deepEqual(project.runtime.sessionHistory, [originalSession]);
+    assert.equal(fileHash(originalSession), endedHash);
+    const recoveries = project.actions.filter(action => action.type === 'recovery');
+    assert.equal(recoveries.length, 1);
+    assert.equal(recoveries[0].capacityRecovery.feedbackCode, 'REVISION_SCHEMA_INVALID');
+    assert.equal(recoveries[0].capacityRecovery.feedbackPath, '/changes/0/after');
+    assert.equal(project.usage.modelHttpAttempts, 2); assert.equal(project.usage.qlooHttpAttempts, 0);
+    assert.equal(project.runtime.failure, undefined); assert.equal(validationRun.liveStopped, false);
+  }
 });
 
 test('native schema preflight rejection recovers once before any invalid business execution', async t => {
@@ -349,14 +399,20 @@ test('native schema preflight rejection recovers once before any invalid busines
 });
 
 test('capacity recovery respects initial overflow, current contract identity, HTTP budget and existing stop conditions', async t => {
-  for (const condition of ['oversized', 'locked', 'stale-feedback', 'exhausted', 'global-stop', 'existing-failure', 'http-error']) {
-    const { project, before, bodies, events } = await contractRecovery(t, condition === 'locked' ? 'revision' : 'proposal', condition);
+  for (const condition of ['oversized', 'locked', 'no-change', 'stale-feedback', 'exhausted', 'global-stop', 'existing-failure', 'http-error']) {
+    const { project, before, bodies, events } = await contractRecovery(t, ['locked', 'no-change'].includes(condition) ? 'revision' : 'proposal', condition);
     assert.equal(bodies.length, condition === 'oversized' ? 0 : 1, condition);
     assert.equal(project.runtime.sessionHistory?.length ?? 0, 0, condition);
     assert.equal(project.actions.filter(action => action.type === 'recovery').length, 0, condition);
     assert.deepEqual(authority(project), before, condition);
     if (condition === 'locked') {
       assert.equal(events[0].feedback.code, 'FIELD_LOCKED');
+      assert.equal(events[0].feedback.correctable, true);
+      assert.equal(project.runtime.failure?.code, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT');
+    }
+    if (condition === 'no-change') {
+      assert.equal(events[0].feedback.code, 'REVISION_INVALID');
+      assert.equal(events[0].feedback.path, '/changes/0/after');
       assert.equal(events[0].feedback.correctable, true);
       assert.equal(project.runtime.failure?.code, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT');
     }

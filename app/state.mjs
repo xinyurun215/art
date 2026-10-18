@@ -244,17 +244,18 @@ function checkedEvidenceRef(project, link, path) {
     inspiration: link.inspiration };
 }
 function checkRevisionField(project, field, after, before, path) {
-  if (['title', 'coreClaim'].includes(field)) revisionEnsure(nonempty(after), '修改后的文字不能为空', path);
-  else if (field === 'mechanism') revisionEnsure(exactKeys(after, ['organization', 'description'])
-    && nonempty(after.organization) && nonempty(after.description), '参与机制必须包含组织方式与说明', path);
-  else if (field === 'journey') revisionEnsure(Array.isArray(after) && after.length >= 3
-    && after.every(step => exactKeys(step, ['stage', 'action']) && nonempty(step.stage) && nonempty(step.action)), '体验旅程需包含至少三个有效阶段', path);
+  const ensureShape = (condition, message) => revisionEnsure(condition, message, path, 'REVISION_SCHEMA_INVALID');
+  if (['title', 'coreClaim'].includes(field)) ensureShape(nonempty(after), '修改后的文字不能为空');
+  else if (field === 'mechanism') ensureShape(exactKeys(after, ['organization', 'description'])
+    && nonempty(after.organization) && nonempty(after.description), '参与机制必须包含组织方式与说明');
+  else if (field === 'journey') ensureShape(Array.isArray(after) && after.length >= 3
+    && after.every(step => exactKeys(step, ['stage', 'action']) && nonempty(step.stage) && nonempty(step.action)), '体验旅程需包含至少三个有效阶段');
   else if (field === 'evidenceLinks') {
-    revisionEnsure(Array.isArray(after), '概念证据引用必须为数组', path);
+    ensureShape(Array.isArray(after), '概念证据引用必须为数组');
     // Historical links are preserved byte-for-byte; only newly supplied links are checked.
     return after.map((link, index) => before.some(old => same(old, link)) ? structuredClone(link)
       : checkedEvidenceRef(project, link, `${path}/${index}`));
-  } else revisionEnsure(stringArray(after) && (!['productTouchpoints', 'unverifiedEffects'].includes(field) || after.length > 0), '修改后的条目格式无效或缺少必要内容', path);
+  } else ensureShape(stringArray(after) && (!['productTouchpoints', 'unverifiedEffects'].includes(field) || after.length > 0), '修改后的条目格式无效或缺少必要内容');
   return structuredClone(after);
 }
 export function proposeRevision(project, input) {
