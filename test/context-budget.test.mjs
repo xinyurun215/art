@@ -536,6 +536,39 @@ test('saved pending-feedback state starts a fresh live context and preserves its
   } finally { await runtime.dispose(); }
 });
 
+test('pending feedback sends reconstructable changes once and retains complete draft metadata within capacity', async t => {
+  const { project } = replay(t);
+  const target = project.concepts[0], pending = project.revisions[0];
+  target.mechanism.description = 'Synthetic confirmed material observation. '.repeat(450);
+  pending.changes[0].before = structuredClone(target.mechanism);
+  pending.changes[0].after.description = 'Synthetic revised material observation. '.repeat(450);
+  pending.draftDelta = [{ field: 'mechanism', before: 'Synthetic intermediate value', after: 'Synthetic current value' }];
+  project.revisionRequest.status = 'error';
+  beginPendingFeedback(project, pending.id, { baseVersion: project.version, text: 'Synthetic follow-up for the complete current draft' });
+  const before = authority(project);
+  const { bodies, guarded } = mockTransport();
+  const runtime = await createProductRuntime(project, { env, diagnostic: { fetch: guarded.fetch } });
+  try {
+    await runtime.submit(project.revisionRequest.text);
+    assert.equal(bodies.length, 1, 'duplicate confirmed/draft values must not consume the configured output capacity');
+    assert.equal(bodies[0].max_tokens, 12000);
+    const user = bodies[0].messages.find(message => message.role === 'user');
+    const current = JSON.parse(typeof user.content === 'string' ? user.content : user.content.map(block => block.text ?? '').join('')).project;
+    assert.deepEqual(current.concepts, before.concepts);
+    assert.deepEqual(current.currentPendingDraft, { ...before.concepts[0],
+      ...Object.fromEntries(before.revisions[0].changes.map(change => [change.field, change.after])) });
+    assert.deepEqual(current.currentPendingRevision, { ...before.revisions[0],
+      changes: before.revisions[0].changes.map(({ before, after, ...metadata }) => metadata) });
+    const reconstructed = { ...current.currentPendingRevision, changes: current.currentPendingRevision.changes.map(change => ({ ...change,
+      before: current.concepts.find(concept => concept.id === pending.targetConceptId)[change.field],
+      after: current.currentPendingDraft[change.field] })) };
+    assert.deepEqual(reconstructed, before.revisions[0]);
+    assert.deepEqual(authority(project), before);
+    assert.equal(guarded.ledger.modelHttpAttempts, 1);
+    assert.equal(guarded.ledger.qlooHttpAttempts, 0);
+  } finally { await runtime.dispose(); }
+});
+
 test('length finish without text or tool is a distinct failure and retains both drafts', async t => {
   const { project } = replay(t);
   const confirmed = structuredClone(project.concepts);

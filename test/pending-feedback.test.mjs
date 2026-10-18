@@ -124,7 +124,7 @@ test('stale feedback source, fingerprint, target and late responses cannot creat
   }
 });
 
-test('official dispatcher receives original confirmed concepts, full current pending draft and arbitrary feedback using unchanged revision schema', async () => {
+test('official dispatcher receives confirmed concepts, reconstructable pending metadata and full draft using unchanged revision schema', async () => {
   const { project, pending } = projectWithDraft(); const oldDraft = pendingRevisionDraft(project, pending);
   const confirmed = structuredClone(project.concepts); const source = structuredClone(pending);
   const request = startFeedback(project, pending, '先独立观察；保留原记录中的材料对照与离场流程');
@@ -138,7 +138,13 @@ test('official dispatcher receives original confirmed concepts, full current pen
   } });
   try {
     await runtime.submit(request.text);
-    assert.deepEqual(seen.project.concepts, confirmed); assert.deepEqual(seen.project.currentPendingRevision, source);
+    assert.deepEqual(seen.project.concepts, confirmed);
+    assert.deepEqual(seen.project.currentPendingRevision, { ...source,
+      changes: source.changes.map(({ before, after, ...metadata }) => metadata) });
+    assert.deepEqual({ ...seen.project.currentPendingRevision,
+      changes: seen.project.currentPendingRevision.changes.map(change => ({ ...change,
+        before: confirmed.find(concept => concept.id === source.targetConceptId)[change.field],
+        after: seen.project.currentPendingDraft[change.field] })) }, source);
     assert.deepEqual(seen.project.currentPendingDraft, oldDraft); assert.equal(seen.message, request.text);
     assert.equal(seen.project.revisionRequest.sourceRevisionId, pending.id); assert.deepEqual(seen.project.lockedFields, []);
     const schema = runtime.session.getToolDefinition('propose_concept_revision').parameters;
