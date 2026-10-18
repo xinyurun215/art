@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { createProject, applyProposal } from '../app/state.mjs';
 import { createProductRuntime, recordEvidence } from '../app/runtime.mjs';
 import { budgetedFetch, safeRuntimeFailure, serverUsage, validationRun, withHttpBudget } from '../app/transport.mjs';
@@ -278,12 +280,20 @@ test('official executor wrapping cannot erase a source block after the last avai
 
 test('write explicit mock-only evidence for four UI distinctions', () => {
   assert.equal(fixtures.length, 5);
-  mkdirSync(new URL('../validation/feedback-repair/', import.meta.url), { recursive: true });
-  writeFileSync(new URL('../validation/feedback-repair/offline-cases.json', import.meta.url), JSON.stringify({
+  const outputDir = mkdtempSync(join(tmpdir(), 'art-feedback-test-'));
+  const path = join(outputDir, 'offline-cases.json');
+  try {
+    writeFileSync(path, JSON.stringify({
     mode: 'OFFLINE MOCK / FIXTURE — NOT PRODUCT ACCEPTANCE', mock: true, fixture: true, noRealNetwork: true,
     outboundRealModelRequests: 0, outboundRealQlooRequests: 0, simulatedCounters: true,
     modelFeedbackBudgetSemantics: '模型读取到的反馈余额包含该次读取请求；project.runtime.feedback为submit结束后的当前余额，actions保留当时快照。',
     realHttpAttempts: { model: 0, qloo: 0 }, boundary: '实际使用安装的官方会话与公开钩子，模型及Qloo HTTP均被本地模拟；不构成真实产品验收。',
     cases: fixtures,
-  }, null, 2) + '\n');
+    }, null, 2) + '\n');
+    assert.equal(JSON.parse(readFileSync(path, 'utf8')).cases.length, 5);
+  } finally {
+    assert.equal(dirname(resolve(outputDir)), resolve(tmpdir()));
+    assert(outputDir.startsWith(join(tmpdir(), 'art-feedback-test-')));
+    rmSync(outputDir, { recursive: true, force: true });
+  }
 });

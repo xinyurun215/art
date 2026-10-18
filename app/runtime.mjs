@@ -1,25 +1,47 @@
 // The official harness owns model continuation and tool dispatch.
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createPiHarnessRuntime, resolveQlooPaths, createQlooTools,
   createDelegatingQlooWorkflowExecutor, createDirectQlooWorkflowExecutorFromEnvironment,
   withPiAgentDirectory, withPiPrivacyDefaults } from '@qloo/qloo-harness';
 import { ModelRuntime, SessionManager } from '@earendil-works/pi-coding-agent';
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
+import { clampMaxTokensToContext } from '@earendil-works/pi-ai/api/simple-options';
 import { Type } from 'typebox';
 import { Errors } from 'typebox/value';
-import { applyProposal, action, configStatus } from './state.mjs';
+import { applyProposal, proposeRevision, pendingRevisionDraft, finishRevisionRequest, REVISION_FIELDS, action, configStatus } from './state.mjs';
 import { withHttpBudget, withoutNetwork, validationRun, stopLiveRun, safeRuntimeFailure,
-  remainingBudget, toolFeedback, recordLocalFailure } from './transport.mjs';
+  remainingBudget, toolFeedback, recordLocalFailure, modelOutputLimit } from './transport.mjs';
 
 const fixture = JSON.parse(readFileSync(new URL('../fixtures/culture-signals.json', import.meta.url)));
 export const TOOL_NAMES = Object.freeze(['qloo_describe', 'qloo_recommend', 'propose_design_response']);
+export const REVISION_TOOL_NAMES = Object.freeze(['propose_concept_revision']);
 const toolText = message => typeof message.content === 'string' ? message.content :
   (message.content ?? []).filter(c => c.type === 'text').map(c => c.text).join('');
-const snapshotProject = project => structuredClone({ id: project.id, version: project.version,
-  brief: project.brief, evidence: project.evidence, concepts: project.concepts,
-  questions: project.questions, status: project.status, remainingBudget: remainingBudget(project) });
+const snapshotProject = project => {
+  const pending = project.revisionRequest?.kind === 'pending_feedback'
+    ? project.revisions?.find(revision => revision.id === project.revisionRequest.sourceRevisionId) : null;
+  const priorFeedback = pending && project.revisionFeedback?.findLast(feedback =>
+    feedback.requestId !== project.revisionRequest.id
+    && feedback.sourceRevisionId === pending.id
+    && feedback.baseVersion === project.revisionRequest.baseVersion);
+  const target = project.concepts.find(concept => concept.id === project.revisionRequest?.targetConceptId);
+  const referenced = new Set([...(target?.evidenceLinks ?? []), ...(pending?.changes ?? []).flatMap(change => change.evidenceRefs ?? [])]
+    .map(reference => reference.evidenceId));
+  const relevant = project.evidence.filter(card => card.relevant !== false);
+  const linked = relevant.filter(card => referenced.has(card.id));
+  const evidence = target && linked.length ? linked : relevant;
+  return structuredClone({ id: project.id, version: project.version,
+  brief: project.brief, evidence, concepts: project.concepts,
+  questions: project.questions, status: project.status, selectedConceptId: project.selectedConceptId,
+  lockedFields: project.lockedFields ?? [], revisionRequest: project.revisionRequest,
+  ...(priorFeedback ? { priorFeedback: { text: priorFeedback.text, status: priorFeedback.status } } : {}),
+  ...(project.runtime.feedback ? { previousFeedback: Object.fromEntries(['code', 'path', 'reason', 'correctable', 'nextAction']
+    .filter(key => Object.hasOwn(project.runtime.feedback, key)).map(key => [key, project.runtime.feedback[key]])) } : {}),
+  ...(pending ? { currentPendingRevision: pending, currentPendingDraft: pendingRevisionDraft(project, pending) } : {}),
+  remainingBudget: remainingBudget(project) });
+};
 const strings = Type.Array(Type.String());
 const briefFields = ['request', 'brand', 'goal', 'references', 'venue', 'budget', 'mustKeep', 'avoid'];
 const proposalSchema = Type.Object({ baseVersion: Type.Integer(),
@@ -33,6 +55,87 @@ const proposalSchema = Type.Object({ baseVersion: Type.Integer(),
     evidenceLinks: Type.Array(Type.Object({ evidenceId: Type.String(), entityId: Type.String(),
       observedField: Type.String(), observedValue: Type.Unknown(), observation: Type.String(), inspiration: Type.String() })),
     openQuestions: strings, unverifiedEffects: strings })) }, { additionalProperties: false });
+const revisionReferenceSchema = Type.Object({ evidenceId: Type.String(), entityId: Type.String(), observedField: Type.String(),
+  observedValue: Type.Unknown(), observation: Type.Optional(Type.String()), inspiration: Type.String(),
+  basis: Type.Optional(Type.Union(['description', 'affinity', 'returned_field'].map(value => Type.Literal(value)))) }, { additionalProperties: false });
+const revisionSchema = Type.Object({
+  phase: Type.Union(['pending', 'needs_input', 'conflict'].map(value => Type.Literal(value))),
+  summary: Type.String(), question: Type.Optional(Type.String()),
+  changes: Type.Array(Type.Object({ field: Type.Union(REVISION_FIELDS.map(value => Type.Literal(value))), after: Type.Unknown(),
+    reason: Type.String(), evidenceRefs: Type.Array(revisionReferenceSchema) }, { additionalProperties: false })),
+  impact: strings, unknowns: strings }, { additionalProperties: false });
+
+// A named, explicitly selected fixture exercises official model/tool dispatch.
+// It makes no claim to understand arbitrary feedback or generate a live design.
+export function offlineRevisionDecision(context, snapshot) {
+  const userIndex = context.messages.findLastIndex(message => message.role === 'user');
+  const results = context.messages.slice(userIndex + 1).filter(message => message.role === 'toolResult');
+  if (results.length) return [{ type: 'text', text: '离线修改夹具已执行；请查看服务端校验结果与待审差异。不是实际模型理解或效果验证。' }];
+  const request = snapshot.revisionRequest;
+  const fixtureName = request?.offlineFixture;
+  const response = { phase: 'needs_input', summary: '离线模式不能解释任意反馈；正式内容保持不变。',
+    question: '如需验证局部修改流程，请显式选择离线测试夹具；真实语义处理需另行授权并配置真实模型。',
+    changes: [], impact: [], unknowns: ['未验证真实模型对本次输入的理解与设计质量。'] };
+  if (fixtureName === 'conflict') Object.assign(response, { phase: 'conflict',
+    summary: '离线冲突夹具：试穿必须保留与删除所有产品接触之间存在冲突。',
+    question: '请确认是否保留原先必须保留的试穿要求；未确认前不修改正式方案。' });
+  if (fixtureName === 'needs_input') Object.assign(response, { summary: '离线澄清夹具：参与容量会影响双人组织。',
+    question: '每轮允许同时参与多少人？未知时可以明确标为待确认。' });
+  if (['pair_45', 'invalid_reference'].includes(fixtureName)) {
+    const target = snapshot.concepts.find(concept => concept.id === request.targetConceptId);
+    const references = [];
+    for (const card of snapshot.evidence) {
+      if (card.projectId !== snapshot.id || card.relevant === false) continue;
+      for (const entity of card.returnedEntities ?? []) {
+        const entry = Object.entries(entity.properties ?? {}).find(([key, value]) => /^(short_|long_)?description$/.test(key) && typeof value === 'string' && value.trim());
+        if (entry) references.push({ evidenceId: card.id, entityId: entity.id ?? entity.entity_id,
+          observedField: `properties.${entry[0]}`, observedValue: entry[1], basis: 'description',
+          inspiration: '设计推断：实际实体描述仅作为匿名身份与穿者/记录者角色配对的创意参考；不证明尺码适配、库存、试穿时长或任何效果。' });
+      }
+    }
+    if (fixtureName === 'invalid_reference') references.splice(0, references.length, { evidenceId: 'offline-intentionally-missing',
+      entityId: 'offline-missing', observedField: 'properties.description', observedValue: '这是故意无效的离线引用',
+      inspiration: '仅用于验证服务端拒绝，不是证据。' });
+    const contact = snapshot.brief.mustKeep.length ? snapshot.brief.mustKeep.join('、') : '产品试穿';
+    const sizeAllocation = '先分别确认两人各自适配尺码，每人独立分配一双；只换角色、不换鞋；库存缺码或数量不足时暂停本对试穿并披露库存冲突，不用不合脚鞋或同一双鞋替代';
+    const ownSizeTouchpoint = `真实上脚${contact}：${sizeAllocation}。`;
+    let replacedAllocation = false;
+    const productTouchpoints = target.productTouchpoints.map(item => {
+      if (item.includes('每对一双') && item.includes('轮换')) {
+        replacedAllocation = true;
+        return item.replace(/每对一双轮换(?:[，,]含半码备用)?/, sizeAllocation);
+      }
+      return item;
+    });
+    if (!replacedAllocation && !productTouchpoints.includes(ownSizeTouchpoint)) productTouchpoints.push(ownSizeTouchpoint);
+    const stockQuestion = '尺码库存前置条件：尚未核实两人的适配尺码与各自可分配双数；若缺码或数量不足，暂停本对试穿并明确披露库存冲突，请用户决定补齐、另约或取消，不宣称已经解决供货。';
+    const openQuestions = target.openQuestions.map(item => item.includes('每对一双') || /尺码.*(?:库存|分布|双数)/.test(item) ? stockQuestion : item);
+    if (!openQuestions.includes(stockQuestion)) openQuestions.push(stockQuestion);
+    const timeQuestion = '0–5分钟能否完成独立量码与配鞋、两段各至少15分钟试穿及35–40分钟复测能否在原定人数下执行，需以实际库存、人员与现场容量验证；45分钟是设计时间分配，不是效果证据。';
+    if (!openQuestions.includes(timeQuestion)) openQuestions.push(timeQuestion);
+    const proposed = {
+      mechanism: { organization: '双人匿名配对＋45分钟定时角色交换；保留原有批次人数与编号规则，只换角色、不换鞋',
+        description: `保留双向复述：穿者由记录者依原有四问追问并记录，再互相复核。0–5分钟分别量码、确认两人各自适配尺码并独立配鞋；5–20分钟A穿自己的尺码、B记录，20–35分钟B穿自己的尺码、A记录，每人各至少15分钟；35–40分钟针对个人问题用自己的尺码复测；40–45分钟共同复核与离场。库存缺码或数量不足时暂停本对试穿并披露库存冲突，不让尺码不一致的人交换同一双鞋。45分钟及各段时长属于设计时间分配，不是适配或效果证据。` },
+      journey: [{ stage: '独立量码与配鞋 · 0–5分钟', action: '保留原有匿名编号与记录规则；工作人员分别确认两人各自适配尺码，为每人准备适配的一双。若库存缺码或数量不足，暂停本对试穿、披露库存冲突，等待用户决定补齐或另约。' },
+        { stage: 'A试穿、B记录 · 5–20分钟', action: `A穿自己适配尺码的一双完成至少15分钟${contact}，沿原方案产品体验路径完成动作；B依原有四问追问并记录，A不自行填写评价。` },
+        { stage: 'B试穿、A记录 · 20–35分钟', action: `只换角色、不换鞋：B穿自己适配尺码的另一双完成至少15分钟${contact}，A依相同四问追问并记录；不得将A的鞋直接交给尺码不同的B。` },
+        { stage: '各自尺码定向复测 · 35–40分钟', action: '针对记录中的个人问题，各用自己适配尺码复测；不以另一人的鞋或反馈替代本人适配判断。' },
+        { stage: '互相复核与带走 · 40–45分钟', action: `两人按原有记录卡互相订正，保留原方案带走内容与匿名规则。${target.journey.at(-1)?.action ?? '各自带走个人记录。'}` }],
+      productTouchpoints, openQuestions,
+    };
+    Object.assign(response, { phase: 'pending', summary: '离线测试夹具：45分钟双人试穿改为各自适配尺码独立配鞋；库存待确认，缺码则暂停。仅形成待审修改，不代表任意反馈语义理解。',
+      changes: Object.entries(proposed).filter(([field, after]) => JSON.stringify(after) !== JSON.stringify(target[field])).map(([field, after]) => ({
+        field, after, reason: ['mechanism', 'journey'].includes(field)
+          ? '离线设计设定：保留匿名双向复述，只调整45分钟时间组织与每人独立尺码配鞋；实际描述仅支持角色配对的创意推断，不证明适配或效果。'
+          : '运营设计推断：修正每对共用一双造成的尺码冲突，保留无关样块、材料垫与记录卡；独立配鞋依赖尚未核实的库存和容量。',
+        evidenceRefs: ['mechanism', 'journey'].includes(field) ? references.slice(0, 1) : [] })),
+      impact: ['仅调整独立量码配鞋、45分钟角色分段、试穿复测与相应库存/容量问题；保留标题、核心主张、历史证据、无关产品接触及带走内容。'],
+      unknowns: ['实际尺码库存与每人可分配的一双尚未核实，缺码或不足须暂停并披露冲突。',
+        '原定人数下量码、两段各15分钟试穿与复测的容量、人员及45分钟可执行性未经验证。',
+        ...(references.length ? [] : ['现有证据没有可引用的实际描述字段；本夹具不新增描述事实。'])] });
+  }
+  return [{ type: 'toolCall', id: randomUUID(), name: 'propose_concept_revision', arguments: response }];
+}
 
 const valueState = value => value === undefined ? 'missing' : value === null ? 'null'
   : (typeof value === 'string' && !value.trim()) || (Array.isArray(value) && !value.length)
@@ -124,6 +227,7 @@ function mockConcepts(snapshot, card) {
 // This deterministic offline model reads only portable content.text tool results.
 // It is a test fixture model, never represented as real model creativity.
 export function offlineDecision(context, snapshot) {
+  if (snapshot.revisionRequest?.status === 'running') return offlineRevisionDecision(context, snapshot);
   const userIndex = context.messages.findLastIndex(m => m.role === 'user');
   let userText = '';
   try { userText = JSON.parse(toolText(context.messages[userIndex])).message || ''; } catch { userText = toolText(context.messages[userIndex]); }
@@ -302,6 +406,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
   }
   const provider = project.mode === 'offline' ? `offline-${project.id}` : env.ART_MODEL_PROVIDER;
   const modelId = project.mode === 'offline' ? 'synthetic-design-fixture' : env.ART_MODEL_ID;
+  const outputSafetyTokens = 4096;
   modelRuntime.registerProvider(provider, { api: project.mode === 'offline' ? 'art-offline-fixture' : env.ART_MODEL_API,
     baseUrl: project.mode === 'offline' ? 'https://offline.invalid' : env.ART_MODEL_BASE_URL,
     apiKey: project.mode === 'offline' ? 'synthetic-local-only' : env.ART_MODEL_API_KEY,
@@ -323,13 +428,30 @@ export async function createProductRuntime(project, { env = process.env, decide 
         project.runtime.modelResultReads += read.length;
         return syntheticStream(model, decide(context, snapshotProject(project)));
       }
+      const availableOutput = clampMaxTokensToContext(model, context, model.contextWindow);
+      const capacity = { model: model.id, contextWindow: model.contextWindow,
+        estimatedInputTokens: Math.max(0, model.contextWindow - outputSafetyTokens - availableOutput),
+        inputEstimateIsLowerBound: availableOutput === 1, safetyTokens: outputSafetyTokens,
+        reservedOutputTokens: model.maxTokens, finalMaxTokens: null };
+      project.runtime.generationBudget = capacity;
+      if (availableOutput < model.maxTokens)
+        throw recordLocalFailure(project, 'model', 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT',
+          '当前上下文不足以保留配置的模型输出容量；请求已在本地停止，正式内容与待审稿保持不变。');
       const stream = () => liveStream(model, context,
-        { ...options, apiKey: env.ART_MODEL_API_KEY, transport: 'sse', maxRetries: 0, fetch: diagnostic?.fetch ?? globalThis.fetch });
+        { ...options, apiKey: env.ART_MODEL_API_KEY, transport: 'sse', maxRetries: 0, fetch: diagnostic?.fetch ?? globalThis.fetch,
+          async onPayload(payload, payloadModel) {
+            const updated = await options.onPayload?.(payload, payloadModel);
+            capacity.finalMaxTokens = modelOutputLimit(updated ?? payload);
+            if (capacity.finalMaxTokens !== model.maxTokens)
+              throw recordLocalFailure(project, 'model', 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT',
+                '模型请求的最终输出容量与配置不符；请求已在本地停止。');
+            return updated;
+          } });
       return diagnostic ? stream() : withHttpBudget(project, 'model', env.ART_MODEL_BASE_URL, stream,
         [env.ART_MODEL_API_KEY, env.QLOO_API_KEY]);
     },
     models: [{ id: modelId, name: project.mode === 'offline' ? '离线合成设计模型' : modelId,
-      reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 32000, maxTokens: 5000 }] });
+      reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 32000, maxTokens: 12000 }] });
   let officialExecutor;
   if (project.mode === 'offline') {
     officialExecutor = createDelegatingQlooWorkflowExecutor({ transport: { kind: 'direct', name: 'local-synthetic-fixture', remote: false },
@@ -347,6 +469,27 @@ export async function createProductRuntime(project, { env = process.env, decide 
   }
   const executor = wrapProjectExecutor(project, officialExecutor, env);
   const tools = createQlooTools({ executor }).filter(t => TOOL_NAMES.includes(t.name));
+  let submittedRevisionId = null;
+  tools.push({ name: 'propose_concept_revision', label: '提出局部待审修改',
+    description: 'Propose changes only to the server-bound selected concept and base version. For pending_feedback, changes are a delta from currentPendingDraft; omitted fields retain the existing pending values. Preserve unaffected entries and conditions within changed fields. Never submit project identity, target identity, base version, before values, full projects or concepts. Confirmed content is immutable until user acceptance. Return pending changes with reasons, exact existing evidence references, impact and unknowns, or needs_input/conflict with exactly one question and no changes. Evidence description/short_description can support explicitly marked design inference; affinity is only cultural association and cannot support description claims or effect scores. Existing historical evidence links must be preserved; do not repair or revalidate unrelated content.',
+    parameters: revisionSchema,
+    async execute(_id, input) {
+      let result;
+      const issue = schemaIssue(revisionSchema, input);
+      try {
+        if (issue) throw Object.assign(new Error('局部修改参数结构无效；不要提交项目、目标、基础版本或修改前内容'),
+          { feedback: { code: 'REVISION_SCHEMA_INVALID', path: issue.path, reason: '局部修改参数结构无效；按限定字段修正。', correctable: true } });
+        result = proposeRevision(project, { ...input, requestId: submittedRevisionId });
+        action(project, 'revision', result.status === 'pending' ? '形成局部待审修改' : '局部修改待确认', input.summary);
+        result = { accepted: false, completed: true, revisionId: result.id ?? null, status: result.status,
+          feedback: toolFeedback(project, 'REVISION_RESPONSE_SAVED', '/', '已保存局部修改回应；正式版本未改变，须由用户审查批准。', false) };
+      } catch (error) {
+        const rejected = error.feedback ?? { code: 'REVISION_INVALID', path: '/', reason: '局部修改校验失败；正式版本保持不变。', correctable: true };
+        result = { accepted: false, status: 'error', feedback: toolFeedback(project, rejected.code, rejected.path, rejected.reason,
+          rejected.correctable, '仅修正本目标允许的字段与实际证据引用，或明确澄清与暂停。', issue) };
+      }
+      return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
+    } });
   tools.push({ name: 'propose_design_response', label: '提出结构化设计回应',
     description: 'Only updates the bound current project after version, actual evidence field references, and literal constraints pass. Never submit projectId. questions may be omitted or [] unless phase is needs_input, which requires exactly one {field,text} question with nonempty text. field must be request, brand, goal, references, venue, budget, mustKeep, or avoid. Ready requires two distinct mechanisms; insufficient evidence may pause with zero concepts or show two unsupported drafts.',
     parameters: proposalSchema,
@@ -369,9 +512,18 @@ export async function createProductRuntime(project, { env = process.env, decide 
       result.feedback = toolFeedback(project, 'PROPOSAL_ACCEPTED', '/', '提案已通过结构、版本、引用与字面约束校验；不代表设计质量或产品验收。', false, '当前提案已保存；等待用户审阅。');
       return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
     } });
+  const sessionDirectory = resolve(root, '.art-runtime', project.id, 'sessions');
+  const savedSession = project.runtime.sessionFile;
+  const priorSession = savedSession && resolve(savedSession).startsWith(sessionDirectory + sep) && existsSync(savedSession);
+  const sessionManager = project.mode === 'offline' && priorSession
+    ? SessionManager.open(savedSession, sessionDirectory) : SessionManager.create(root, sessionDirectory);
+  if (project.mode === 'live' && priorSession)
+    (project.runtime.sessionHistory ??= []).push(savedSession);
+  const limits = remainingBudget(project);
+  const liveBudgetDescription = `真实模型与 Qloo 的每项目 HTTP 请求上限分别为 ${limits.caseLimits.modelHttpAttempts}、${limits.caseLimits.qlooHttpAttempts} 次，本服务合计上限分别为 ${limits.sharedLimits.modelHttpAttempts}、${limits.sharedLimits.qlooHttpAttempts} 次，包括重试。`;
   const runtime = await createPiHarnessRuntime({ cwd: root, paths, profile: 'explore', modelRuntime,
-    sessionManager: SessionManager.inMemory(root),
-    resources: { systemPrompt: `你是品牌快闪体验设计智能体。仅处理当前项目，用官方研究工具与 propose_design_response 更新提案板。按必要性决定澄清、查询、比较或暂停，不强制固定流程。客户文化参考只是研究信号，未知品牌的代理必须用户确认。区分实际返回字段、设计推断与未验证效果。不得把文化关联视为设计评分或效果预测。缺少证据时明确不足。两个概念须有实质不同参与机制；不同 organization 字符串只做机械检查，不是实质差异证明。${project.mode === 'offline' ? fixture.label : '真实模型与 Qloo 各自预算为每项目六次、本服务合计十二次 HTTP 请求，包括重试。'}`,
+    sessionManager,
+    resources: { systemPrompt: `你是品牌快闪体验设计智能体。仅处理当前项目；初始研究使用官方研究工具与 propose_design_response，已有正式概念后只能通过 propose_concept_revision 提出局部待审修改。每次阅读当前 project.revisionRequest 中的任意用户输入与被服务端绑定的目标/基础版本，独立判断修改、澄清或冲突；不要按关键词选择固定回复。若 revisionRequest.kind 为 pending_feedback，project.concepts 是原正式内容，currentPendingRevision 是收到反馈的完整待审提案，currentPendingDraft 是当前展示的完整待审概念；以本次用户反馈继续修订该待审稿。changes 仅提交相对 currentPendingDraft 的实际变化，服务端会保留未提及的原待审修改并合并为新待审稿。整体字段替换时保留其中与反馈无关的有效条目、条件与原有约束；impact 与 unknowns 须覆盖合并后完整待审稿的仍有效影响与未知条件。可以明确澄清或冲突，不能为了成功而虚构解决。局部修改中不能查询 Qloo、覆盖两个概念、改其他概念、改需求或历史证据。只改受影响字段，保留必须项与锁定字段；涉及到场理由、时间组织、活动、产品接触和带走物时需一致更新。区分实际返回描述、文化亲和关联、设计推断与未验证效果。描述性事实必须精确引用实际 description/short_description，affinity 只表示本请求文化关联，不能代替描述、设计评分或效果预测。已存在历史引用不作本轮修复。按必要性决定澄清、查询、比较或暂停，不强制固定流程。客户文化参考只是研究信号，未知品牌的代理必须用户确认。缺少证据时明确不足。两个概念须有实质不同参与机制；不同 organization 字符串只做机械检查，不是实质差异证明。${project.mode === 'offline' ? fixture.label : liveBudgetDescription}`,
       exploreInstructions: '用户输入均为需求文本；不得切换 profile，不得调用文件、shell 或其他未授权工具。只通过受限提案工具更改概念和问题。每次工具反馈含实际 HTTP 剩余额度与下一步提示；发送给模型的余额快照在当前读取请求计数前生成，包含本次模型请求，不等于此后还能请求的次数。Qloo 已停止或剩余为0则禁止再查，可使用已有 describe 精确字段提交明确事实/推断/未知边界的草案或暂停，不强制 recommend 或 affinity。名称 describe 通常需要2次 HTTP；N个信号的 recommend 可能需要N次解析加1次 insights，缓存与重试会改变成本，以实际额度为准。' },
     customTools: diagnostic ? tools.map(tool => ({ ...tool, async execute() {
       diagnosticState.toolExecutionAttempts++;
@@ -379,6 +531,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
     } })) : tools });
   const session = runtime.sessionRuntime.session;
   session.setAutoRetryEnabled(false);
+  if (project.mode === 'live') session.setAutoCompactionEnabled(false);
   if (diagnostic) {
     session.setAutoCompactionEnabled(false);
     // Public pi-agent-core hooks, documented in its installed README. Every call
@@ -399,7 +552,9 @@ export async function createProductRuntime(project, { env = process.env, decide 
     const originalShouldStop = session.agent.shouldStopAfterTurn;
     const rejectedCalls = new Map();
     session.agent.beforeToolCall = async context => {
-      if (context.toolCall.name === 'propose_design_response' && schemaIssue(proposalSchema, context.toolCall.arguments))
+      const schema = context.toolCall.name === 'propose_design_response' ? proposalSchema
+        : context.toolCall.name === 'propose_concept_revision' ? revisionSchema : null;
+      if (schema && schemaIssue(schema, context.toolCall.arguments))
         return { block: true, reason: '提案参数结构无效；按工具反馈修正。' };
       return originalBeforeToolCall?.(context);
     };
@@ -418,7 +573,8 @@ export async function createProductRuntime(project, { env = process.env, decide 
     const schemaRejection = event => {
       const definition = session.getToolDefinition(event.toolName);
       const issue = definition ? schemaIssue(definition.parameters, event.args) : null;
-      return toolFeedback(project, issue ? (event.toolName === 'propose_design_response' ? 'PROPOSAL_SCHEMA_INVALID' : 'QLOO_ARGUMENTS_INVALID')
+      return toolFeedback(project, issue ? (event.toolName === 'propose_design_response' ? 'PROPOSAL_SCHEMA_INVALID'
+        : event.toolName === 'propose_concept_revision' ? 'REVISION_SCHEMA_INVALID' : 'QLOO_ARGUMENTS_INVALID')
         : definition ? 'TOOL_EXECUTION_ERROR' : 'TOOL_NOT_ALLOWED', issue?.path ?? '/',
       issue ? '工具参数未通过结构校验；按反馈路径和期望类型修正。' : '工具未获许可或执行失败；没有取得可用结果。',
       Boolean(issue), undefined, issue ?? valueDiagnostic(event.args, '/', 'allowed tool arguments'));
@@ -445,7 +601,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
     };
     session.agent.shouldStopAfterTurn = async (context, signal) => {
       if (await originalShouldStop?.(context, signal)) return true;
-      if (context.toolResults.some(result => result.details?.accepted === true)) return true;
+      if (context.toolResults.some(result => result.details?.accepted === true || result.details?.completed === true)) return true;
       if (project.mode === 'live' && remainingBudget(project).modelHttpAttempts === 0) {
         const previous = project.runtime.feedback;
         project.runtime.feedback = previous && previous.code !== 'QLOO_RESULT_AVAILABLE'
@@ -459,6 +615,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
   session.setActiveToolsByName(TOOL_NAMES);
   await session.setModel(modelRuntime.getModel(provider, modelId));
   project.runtime.sessionId = session.sessionId;
+  project.runtime.sessionFile = sessionManager.getSessionFile();
   project.runtime.toolNames = session.getActiveToolNames();
   const redactArguments = value => {
     if (typeof value === 'string') {
@@ -471,6 +628,12 @@ export async function createProductRuntime(project, { env = process.env, decide 
     return value;
   };
   session.subscribe(event => {
+    if (event.type === 'message_end' && event.message.role === 'assistant' && event.message.stopReason === 'length'
+      && !event.message.content.some(block => block.type === 'toolCall' || (block.type === 'text' && block.text.trim()))) {
+      project.runtime.failure = { kind: 'model', code: 'MODEL_OUTPUT_LENGTH_EMPTY', status: null, stopReason: 'length',
+        summary: '模型因输出长度限制结束，但没有可用正文或工具调用；正式内容与待审稿保持不变。' };
+      stopLiveRun(project, project.runtime.failure);
+    }
     if (event.type === 'message_end' && event.message.role === 'assistant' && ['error', 'aborted'].includes(event.message.stopReason)) {
       project.runtime.failure = safeRuntimeFailure(project, 'model', event.message.stopReason);
       stopLiveRun(project, project.runtime.failure);
@@ -503,6 +666,18 @@ export async function createProductRuntime(project, { env = process.env, decide 
   return { session, paths, ...(diagnostic ? { diagnostic: diagnosticState } : {}), async submit(message) {
     const started = Date.now();
     const previousVersion = project.version;
+    const revisionRequest = project.revisionRequest?.status === 'running' ? project.revisionRequest : null;
+    submittedRevisionId = revisionRequest?.id ?? null;
+    const activeTools = revisionRequest ? REVISION_TOOL_NAMES : TOOL_NAMES;
+    if (project.mode === 'live' && session.messages.length) {
+      (project.runtime.sessionHistory ??= []).push(sessionManager.getSessionFile());
+      sessionManager.newSession();
+      session.agent.state.messages = [];
+      project.runtime.sessionId = session.sessionId;
+      project.runtime.sessionFile = sessionManager.getSessionFile();
+    }
+    session.setActiveToolsByName(activeTools);
+    project.runtime.toolNames = session.getActiveToolNames();
     try {
       await withoutNetwork(project, () => withPiAgentDirectory(paths.agentDir, () => withPiPrivacyDefaults(async () => {
         await session.prompt(JSON.stringify({ project: snapshotProject(project), message }),
@@ -512,6 +687,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
     } catch (error) {
       project.runtime.failure ??= safeRuntimeFailure(project, 'model');
       stopLiveRun(project, project.runtime.failure);
+      if (revisionRequest?.status === 'running') finishRevisionRequest(project, revisionRequest, 'error', project.runtime.failure.summary);
       throw error;
     } finally {
       project.runtime.totalLatencyMs = (project.runtime.totalLatencyMs ?? 0) + Math.max(0, Date.now() - started);
@@ -519,10 +695,14 @@ export async function createProductRuntime(project, { env = process.env, decide 
       if (feedback) project.runtime.feedback = toolFeedback(project, feedback.code, feedback.path, feedback.reason,
         feedback.correctable, feedback.nextAction, feedbackFields(feedback));
     }
-    session.setActiveToolsByName(TOOL_NAMES);
+    session.setActiveToolsByName(activeTools);
     const last = session.getLastAssistantText();
     if (last) project.messages.push({ role: 'assistant', text: last });
-    if (project.version === previousVersion && project.status.phase === 'busy') {
+    if (revisionRequest && revisionRequest.status === 'running') {
+      finishRevisionRequest(project, revisionRequest, 'error', project.runtime.failure?.summary ?? project.runtime.feedback?.reason
+        ?? '本轮未产生有效局部修改；正式版与原待审稿保持不变。');
+      project.status = { phase: 'error', detail: revisionRequest.detail };
+    } else if (project.version === previousVersion && project.status.phase === 'busy') {
       const feedback = project.runtime.feedback;
       project.status = { phase: !project.runtime.failure && ['QLOO_EMPTY', 'EVIDENCE_INSUFFICIENT'].includes(feedback?.code) ? 'insufficient_evidence' : 'error',
         detail: project.runtime.failure?.summary ?? feedback?.reason ?? '本轮未产生通过校验的提案；当前状态已保留' };

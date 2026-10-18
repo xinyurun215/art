@@ -7,16 +7,24 @@ const originalFetch = globalThis.fetch;
 export const serverUsage = { modelHttpAttempts: 0, qlooHttpAttempts: 0 };
 export const validationRun = { queryStopped: false, liveStopped: false, attempts: [] };
 
+function projectLimits(project) {
+  const validation = project.runtime.validation;
+  return validation && Number.isInteger(validation.modelHttpLimit) && validation.modelHttpLimit >= 0
+    && validation.modelHttpLimit <= 10 && validation.qlooHttpLimit === 0
+    ? { modelHttpAttempts: validation.modelHttpLimit, qlooHttpAttempts: 0 } : LIMITS;
+}
+
 export function remainingBudget(project) {
+  const limits = projectLimits(project);
   const caseRemaining = {}, sharedRemaining = {};
   for (const key of Object.keys(LIMITS)) {
-    caseRemaining[key] = Math.max(0, LIMITS[key] - project.usage[key]);
+    caseRemaining[key] = Math.max(0, limits[key] - project.usage[key]);
     sharedRemaining[key] = Math.max(0, SERVER_LIMITS[key] - serverUsage[key]);
   }
   const queryStopped = Boolean(project.runtime.queryStopped || (project.mode === 'live' && validationRun.queryStopped));
   return { modelHttpAttempts: Math.min(caseRemaining.modelHttpAttempts, sharedRemaining.modelHttpAttempts),
     qlooHttpAttempts: queryStopped ? 0 : Math.min(caseRemaining.qlooHttpAttempts, sharedRemaining.qlooHttpAttempts),
-    caseRemaining, sharedRemaining, caseLimits: LIMITS, sharedLimits: SERVER_LIMITS, queryStopped };
+    caseRemaining, sharedRemaining, caseLimits: limits, sharedLimits: SERVER_LIMITS, queryStopped };
 }
 
 export function toolFeedback(project, code, path, reason, correctable = false, nextAction, diagnostic) {
@@ -26,7 +34,9 @@ export function toolFeedback(project, code, path, reason, correctable = false, n
       ? { expectedType: diagnostic.expectedType, actualType: diagnostic.actualType, valueState: diagnostic.valueState } : {}),
     remainingBudget: remaining,
     nextAction: remaining.modelHttpAttempts === 0 ? '模型 HTTP 额度已用尽；保留当前状态并暂停，禁止继续模型请求。'
-      : remaining.qlooHttpAttempts === 0 ? '禁止继续 Qloo 查询；仅使用已有精确证据提交标明边界的草案，或以 insufficient_evidence 暂停。'
+      : remaining.qlooHttpAttempts === 0 ? project.revisionRequest
+        ? '禁止继续 Qloo 查询；仅使用已有精确证据提出 pending 待审修改，或以 needs_input/conflict 提出一个问题并暂停；正式版本保持不变。'
+        : '禁止继续 Qloo 查询；仅使用已有精确证据提交标明边界的草案，或以 insufficient_evidence 暂停。'
       : nextAction ?? '根据反馈修正参数；引用已有实际字段，证据不足则以 insufficient_evidence 提交草案或暂停。' };
 }
 
@@ -35,6 +45,10 @@ export function recordLocalFailure(project, kind, code, reason) {
   project.runtime.feedback = feedback;
   project.runtime.localFailure = { kind, status: null, stopReason: 'error', ...feedback, summary: reason };
   return new Error(reason);
+}
+
+export function modelOutputLimit(body) {
+  return body.max_completion_tokens ?? body.max_tokens ?? body.max_output_tokens ?? null;
 }
 
 function redactDiagnosticText(value, secrets) {
@@ -184,16 +198,23 @@ export function budgetedFetch(implementation = originalFetch) {
     if (project.mode !== 'live') throw recordLocalFailure(project, kind, 'OFFLINE_HTTP_BLOCKED', '离线模式禁止外部 HTTP 请求');
     const destination = new URL(typeof url === 'string' || url instanceof URL ? url : url.url);
     if (destination.origin !== origin) throw recordLocalFailure(project, kind, 'HTTP_ENDPOINT_BLOCKED', '请求端点不在本次明确配置范围内');
+    if (kind === 'model' && project.runtime.generationBudget) {
+      const body = JSON.parse(typeof options.body === 'string' ? options.body : await url.clone().text());
+      const finalMaxTokens = modelOutputLimit(body);
+      if (finalMaxTokens !== project.runtime.generationBudget.finalMaxTokens)
+        throw recordLocalFailure(project, kind, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT', '模型实际发送参数与预检容量不符；本地已阻止请求。');
+    }
     const key = kind === 'model' ? 'modelHttpAttempts' : 'qlooHttpAttempts';
     if (kind === 'qloo' && (project.runtime.queryStopped || validationRun.queryStopped))
       throw recordLocalFailure(project, kind, 'QLOO_QUERY_STOPPED', '本轮真实查询已经停止');
-    if (project.usage[key] >= LIMITS[key] || serverUsage[key] >= SERVER_LIMITS[key])
+    if (project.usage[key] >= projectLimits(project)[key] || serverUsage[key] >= SERVER_LIMITS[key])
       throw recordLocalFailure(project, kind, kind === 'model' ? 'MODEL_HTTP_BUDGET_EXHAUSTED' : 'QLOO_HTTP_BUDGET_EXHAUSTED', `${kind} HTTP 总额度已用尽`);
     project.usage[key]++;
     serverUsage[key]++;
     const started = Date.now();
     const entry = { kind, time: new Date(started).toISOString(), status: null, durationMs: null,
-      method: String(options.method ?? url?.method ?? 'GET').toUpperCase(), host: destination.host, path: destination.pathname };
+      method: String(options.method ?? url?.method ?? 'GET').toUpperCase(), host: destination.host, path: destination.pathname,
+      ...(kind === 'model' && project.runtime.generationBudget ? { generationBudget: { ...project.runtime.generationBudget } } : {}) };
     (project.runtime.httpAttempts ??= []).push(entry);
     validationRun.attempts.push(entry);
     // Automatic redirects would hide extra HTTP attempts from this counter.

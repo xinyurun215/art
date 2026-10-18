@@ -1,8 +1,10 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createProject, action, configStatus, list } from './state.mjs';
+import { createProject, action, configStatus, list, selectConcept, beginRevision, beginPendingFeedback,
+  finishRevisionRequest, decideRevision } from './state.mjs';
 import { createProductRuntime } from './runtime.mjs';
 import { validationRun, stopLiveRun, safeRuntimeFailure } from './transport.mjs';
 
@@ -18,12 +20,37 @@ async function body(request) {
   try { return JSON.parse(data || '{}'); } catch { throw new Error('请求须为有效的 JSON 数据'); }
 }
 
-export function createAppServer({ env = process.env } = {}) {
+export function createAppServer({ env = process.env, dataDir = resolve(publicRoot, '..', '.art-runtime', 'projects'),
+  runtimeOptions = {} } = {}) {
   const projects = new Map();
   const runtimes = new Map();
+  function saveProject(project) {
+    if (!project || !/^[a-zA-Z0-9_-]+$/.test(project.id)) throw new Error('项目标识无效');
+    mkdirSync(dataDir, { recursive: true });
+    const path = resolve(dataDir, `${project.id}.json`);
+    const temporary = `${path}.tmp`;
+    writeFileSync(temporary, JSON.stringify({ schemaVersion: 1, project }), 'utf8');
+    renameSync(temporary, path);
+    projects.set(project.id, project);
+    return project;
+  }
+  if (existsSync(dataDir)) for (const file of readdirSync(dataDir).filter(name => /^[a-zA-Z0-9_-]+\.json$/.test(name))) {
+    const saved = JSON.parse(readFileSync(resolve(dataDir, file), 'utf8'));
+    const project = saved.project;
+    if (!project || `${project.id}.json` !== file) throw new Error('项目快照标识不匹配');
+    projects.set(project.id, project);
+    if (project.status?.phase === 'busy' || project.revisionRequest?.status === 'running') {
+      if (project.revisionRequest?.status === 'running') {
+        finishRevisionRequest(project, project.revisionRequest, 'interrupted', '服务重启中断了处理；正式内容和已保存待审内容保持不变，可重新提交。');
+      }
+      project.status = { phase: 'interrupted', detail: '服务重启中断了处理；没有自动重试、确认修改或发出请求。' };
+      saveProject(project);
+    }
+  }
   let queue = Promise.resolve();
   function schedule(project, text) {
     project.status = { phase: 'busy', detail: '官方会话正在处理；行动与证据将持续更新' };
+    saveProject(project);
     // The SDK's environment helpers are process-scoped. Serialize submissions
     // to keep concurrent projects from borrowing one another's private path.
     queue = queue.then(async () => {
@@ -32,16 +59,23 @@ export function createAppServer({ env = process.env } = {}) {
           summary: '此前真实案例已停止；本项目排队任务未执行，也未发出模型或文化查询请求。' };
         project.status = { phase: 'error', detail: project.runtime.failure.summary };
         action(project, 'runtime', '排队任务停止', project.status.detail, 'error');
+        if (project.revisionRequest?.status === 'running') finishRevisionRequest(project, project.revisionRequest, 'error', project.status.detail);
+        saveProject(project);
         return;
       }
       try {
-        if (!runtimes.has(project.id)) runtimes.set(project.id, await createProductRuntime(project, { env }));
+        if (!runtimes.has(project.id)) runtimes.set(project.id, await createProductRuntime(project, { ...runtimeOptions, env }));
         await runtimes.get(project.id).submit(text);
       } catch {
         project.runtime.failure ??= safeRuntimeFailure(project, 'model');
         stopLiveRun(project, project.runtime.failure);
         project.status = { phase: 'error', detail: project.runtime.failure.summary };
         action(project, 'runtime', '本轮暂停', '没有将失败标记为成功，也没有生成替代证据。', 'error');
+        if (project.revisionRequest?.status === 'running') {
+          finishRevisionRequest(project, project.revisionRequest, 'error', project.status.detail);
+        }
+      } finally {
+        saveProject(project);
       }
     });
   }
@@ -60,18 +94,40 @@ export function createAppServer({ env = process.env } = {}) {
         schedule(project, project.brief.request);
         return json(response, 202, { project });
       }
-      const match = /^\/api\/projects\/([^/]+)(\/messages)?$/.exec(url.pathname);
+      const match = /^\/api\/projects\/([^/]+)(?:\/(messages|select|revisions)(?:\/([^/]+)\/(accept|reject|feedback))?)?$/.exec(url.pathname);
       if (match) {
         const project = projects.get(match[1]);
-        if (!project) return json(response, 404, { error: '项目不存在；本地演示仅保留当前服务进程内的项目。' });
+        if (!project) return json(response, 404, { error: '项目不存在；请检查当前本地项目存储。' });
         if (request.method === 'GET' && !match[2]) return json(response, 200, { project });
         if (request.method === 'POST' && match[2]) {
+          if (project.status.phase === 'busy') return json(response, 409, { error: '当前任务仍在处理，请稍后补充。', code: 'PROJECT_BUSY' });
+          const input = await body(request);
+          if (match[2] === 'select' && !match[3]) {
+            selectConcept(project, input); saveProject(project);
+            return json(response, 200, { project });
+          }
+          if (match[2] === 'revisions' && match[3] && match[4] !== 'feedback') {
+            decideRevision(project, match[3], match[4], input); saveProject(project);
+            return json(response, 200, { project });
+          }
           if (project.mode === 'live' && validationRun.liveStopped)
             return json(response, 409, { error: '本轮真实验证已因错误停止；不能追加真实请求。' });
-          if (project.status.phase === 'busy') return json(response, 409, { error: '当前任务仍在处理，请稍后补充。' });
-          const input = await body(request);
           if (typeof input.text !== 'string' || !input.text.trim()) return json(response, 400, { error: '请输入补充说明' });
           const text = input.text.trim();
+          if (match[2] === 'revisions' && match[4] === 'feedback') {
+            beginPendingFeedback(project, match[3], input);
+            project.messages.push({ role: 'user', text });
+            schedule(project, text);
+            return json(response, 202, { project });
+          }
+          if (match[2] === 'revisions' || project.concepts.length) {
+            // No legacy message can overwrite confirmed concepts. The browser
+            // must explicitly choose the target and send the confirmed version.
+            beginRevision(project, input);
+            project.messages.push({ role: 'user', text });
+            schedule(project, text);
+            return json(response, 202, { project });
+          }
           project.messages.push({ role: 'user', text });
           if (project.status.phase === 'needs_input' && project.questions.length === 1) {
             const field = project.questions[0].field;
@@ -93,9 +149,11 @@ export function createAppServer({ env = process.env } = {}) {
         response.writeHead(200, { 'Content-Type': `${types[extname(path)] || 'application/octet-stream'}; charset=utf-8`, 'Cache-Control': 'no-store' });
         response.end(data);
       } catch { json(response, 404, { error: '文件不存在' }); }
-    } catch (error) { json(response, 400, { error: ['请先描述项目需求', '不支持的运行模式', '不支持的离线场景', '输入超过本地演示上限', '请求须为有效的 JSON 数据'].includes(error.message) ? error.message : '输入格式无效' }); }
+    } catch (error) { json(response, error.statusCode ?? 400, { error: error.code ? error.message
+      : ['请先描述项目需求', '不支持的运行模式', '不支持的离线场景', '输入超过本地演示上限', '请求须为有效的 JSON 数据'].includes(error.message) ? error.message : '输入格式无效',
+      ...(error.code ? { code: error.code, path: error.path } : {}) }); }
   });
-  return { server, projects, async dispose() {
+  return { server, projects, saveProject, async dispose() {
     await queue;
     await Promise.all([...runtimes.values()].map(runtime => runtime.dispose()));
     if (server.listening) await new Promise((done, reject) => server.close(error => error ? reject(error) : done()));

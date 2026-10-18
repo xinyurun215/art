@@ -71,14 +71,33 @@
       <div id="project-context"></div>
       <section id="questions-panel" class="questions-panel" aria-labelledby="questions-heading" hidden></section>
 
+      <section class="concept-section" aria-labelledby="concept-heading">
+        <div class="board-section-heading"><div><p class="eyebrow">已确认内容 · 方案比较</p><h3 id="concept-heading">两种参与方式</h3></div><span class="quiet-label" id="concept-selection-label">选择一个概念，继续修改</span></div>
+        <div class="concept-grid" id="concepts"><article class="concept-placeholder"><span class="concept-letter">A</span><h4>一个共同发生的时刻</h4><p>生成后，查看到场理由、参与机制与完整体验旅程。</p><div class="placeholder-rule"></div><span>等待研究结果</span></article><article class="concept-placeholder"><span class="concept-letter">B</span><h4>另一种接触产品的方法</h4><p>两个概念的区别应体现在参与和产品互动方式。</p><div class="placeholder-rule"></div><span>等待研究结果</span></article></div>
+      </section>
+
+      <section class="revision-section" id="revision-workspace" aria-labelledby="revision-heading" hidden>
+        <div class="board-section-heading"><div><p class="eyebrow">保留确认内容 · 逐次审查</p><h3 id="revision-heading">继续这个概念</h3></div><span class="section-count" id="confirmed-version"></span></div>
+        <p class="revision-selection" id="revision-selection"></p>
+        <form id="revision-form">
+          <label class="field-label" for="revision-text">希望怎么改</label>
+          <textarea id="revision-text" rows="3" aria-describedby="revision-note" placeholder="说明希望调整的内容、原因，以及需要保留的部分。"></textarea>
+          <p class="form-note" id="revision-note">修改会先成为待审提案。只有你明确接受，才会写入已确认版本。</p>
+          <div class="offline-revision-controls" id="offline-revision-controls" hidden>
+            <label class="field-label" for="offline-revision-fixture">离线测试回应</label>
+            <select id="offline-revision-fixture"><option value="">不使用固定提案 · 任意反馈会明确暂停</option><option value="pair_45">45 分钟双人试穿 · 固定测试提案</option><option value="needs_input">关键条件待澄清 · 测试夹具</option><option value="conflict">限制冲突 · 测试夹具</option><option value="invalid_reference">无效证据拒绝 · 测试夹具</option></select>
+            <p class="form-note" id="offline-revision-note">离线模式不理解任意反馈；固定回应只用于检查修改、批准与恢复流程。</p>
+          </div>
+          <button class="primary-button revision-submit" id="submit-revision" type="submit"><span>提出修改</span><span aria-hidden="true">↗</span></button>
+        </form>
+        <div class="revision-feedback" id="revision-feedback" role="status" aria-live="polite" hidden></div>
+        <div id="pending-review" aria-live="polite"></div>
+        <details class="revision-history" id="revision-history" hidden><summary>修改记录 <span id="revision-count"></span></summary><div id="revision-records"></div></details>
+      </section>
+
       <section class="evidence-section" aria-labelledby="evidence-heading">
         <div class="board-section-heading"><div><p class="eyebrow">研究依据</p><h3 id="evidence-heading">文化证据</h3></div><span class="section-count" id="evidence-count">尚无查询</span></div>
         <div class="evidence-list" id="evidence"><div class="empty-evidence"><span class="empty-symbol" aria-hidden="true">↳</span><div><strong>先确认输入，再检查返回了什么</strong><p>每张卡保留查询背景、实际字段与来源。关联只能启发设计，不能预测效果。</p></div></div></div>
-      </section>
-
-      <section class="concept-section" aria-labelledby="concept-heading">
-        <div class="board-section-heading"><div><p class="eyebrow">方案比较</p><h3 id="concept-heading">两种参与方式</h3></div><span class="quiet-label">同一需求 · 不同机制</span></div>
-        <div class="concept-grid" id="concepts"><article class="concept-placeholder"><span class="concept-letter">A</span><h4>一个共同发生的时刻</h4><p>生成后，查看到场理由、参与机制与完整体验旅程。</p><div class="placeholder-rule"></div><span>等待研究结果</span></article><article class="concept-placeholder"><span class="concept-letter">B</span><h4>另一种接触产品的方法</h4><p>两个概念的区别应体现在参与和产品互动方式。</p><div class="placeholder-rule"></div><span>等待研究结果</span></article></div>
       </section>
       <footer class="board-footer"><span>早期提案，可讨论、可追溯。</span><span>场地安全、版权、报价与实际效果需另行核实。</span></footer>
     </section>

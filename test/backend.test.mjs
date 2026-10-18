@@ -2,12 +2,29 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { request } from 'node:http';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createProject, applyProposal, validateProposal, configStatus } from '../app/state.mjs';
 import { createProductRuntime, recordEvidence, wrapProjectExecutor, TOOL_NAMES } from '../app/runtime.mjs';
 import { budgetedFetch, serverUsage, validationRun, withHttpBudget, withoutNetwork } from '../app/transport.mjs';
 import { createAppServer } from '../app/server.mjs';
+
+function isolatedServer(options) {
+  const dataDir = mkdtempSync(join(tmpdir(), 'art-backend-test-'));
+  const app = createAppServer({ ...options, dataDir });
+  const dispose = app.dispose;
+  app.dispose = async () => {
+    try { await dispose(); }
+    finally {
+      assert.equal(dirname(resolve(dataDir)), resolve(tmpdir()));
+      assert(dataDir.startsWith(join(tmpdir(), 'art-backend-test-')));
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  };
+  return app;
+}
 
 const brief = { request: '为虚构运动鞋设计快闪', venue: '上海室内150平方米', references: ['虚构音乐参考'], mustKeep: ['试穿'], avoid: ['现场表演'] };
 function resetValidationRun() {
@@ -245,7 +262,7 @@ async function settled(port, id) {
 }
 
 test('HTTP API returns authoritative state, continues same project/session and keeps live gated', async () => {
-  const app = createAppServer({ env: {} });
+  const app = isolatedServer({ env: {} });
   await new Promise(done => app.server.listen(0, '127.0.0.1', done));
   const port = app.server.address().port;
   try {
@@ -366,7 +383,7 @@ test('tool action evidence retains redacted official arguments and explicit erro
 test('a run failure blocks later live cases at the server before creating a project', async () => {
   resetValidationRun();
   validationRun.liveStopped = true;
-  const app = createAppServer({ env: {} });
+  const app = isolatedServer({ env: {} });
   await new Promise(done => app.server.listen(0, '127.0.0.1', done));
   try {
     const result = await localRequest(app.server.address().port, 'POST', '/api/projects', { brief, mode: 'live' });
@@ -381,7 +398,7 @@ test('a live task accepted before the run stops is blocked again when its queue 
   const env = { ART_ENABLE_LIVE: 'true', ART_MODEL_PROVIDER: 'synthetic', ART_MODEL_ID: 'synthetic',
     ART_MODEL_API: 'unsupported-no-network', ART_MODEL_BASE_URL: 'https://model.invalid', ART_MODEL_API_KEY: 'synthetic',
     QLOO_API_URL: 'https://qloo.invalid', QLOO_API_KEY: 'synthetic' };
-  const app = createAppServer({ env });
+  const app = isolatedServer({ env });
   // Reproduce the acceptance/queue-entry race without a model or external HTTP:
   // the earlier task stops the run after this request's arrival gate passed.
   const store = app.projects.set.bind(app.projects);

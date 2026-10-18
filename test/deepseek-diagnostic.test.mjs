@@ -104,7 +104,7 @@ test('actual installed SDK final JSON and official session pause all three paral
   assert.equal(body.stream, true);
   assert.deepEqual(body.stream_options, { include_usage: true });
   assert.equal(body.store, undefined);
-  assert.equal(body.max_tokens, 5000);
+  assert.equal(body.max_tokens, 12000);
   assert.equal(body.max_completion_tokens, undefined);
   assert.equal(body.thinking, undefined);
   assert.deepEqual(body.tools.map(tool => tool.function.name), ['qloo_describe', 'qloo_recommend', 'propose_design_response']);
