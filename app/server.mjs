@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createProject, action, configStatus, list, selectConcept, beginRevision, beginPendingFeedback,
   finishRevisionRequest, decideRevision } from './state.mjs';
 import { createProductRuntime } from './runtime.mjs';
-import { validationRun, stopLiveRun, safeRuntimeFailure } from './transport.mjs';
+import { createHttpBudget, validationRun, stopLiveRun, safeRuntimeFailure } from './transport.mjs';
 
 const publicRoot = fileURLToPath(new URL('../public', import.meta.url));
 const json = (response, status, body) => { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); response.end(JSON.stringify(body)); };
@@ -34,10 +34,13 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
     projects.set(project.id, project);
     return project;
   }
+  const httpBudget = createHttpBudget({ env, dataDir, onReserve: saveProject });
+  try {
   if (existsSync(dataDir)) for (const file of readdirSync(dataDir).filter(name => /^[a-zA-Z0-9_-]+\.json$/.test(name))) {
     const saved = JSON.parse(readFileSync(resolve(dataDir, file), 'utf8'));
     const project = saved.project;
     if (!project || `${project.id}.json` !== file) throw new Error('项目快照标识不匹配');
+    httpBudget.bind(project);
     projects.set(project.id, project);
     if (project.status?.phase === 'busy' || project.revisionRequest?.status === 'running') {
       if (project.revisionRequest?.status === 'running') {
@@ -47,7 +50,9 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
       saveProject(project);
     }
   }
+  } catch (error) { httpBudget.release(); throw error; }
   let queue = Promise.resolve();
+  let closing = false;
   function schedule(project, text) {
     project.status = { phase: 'busy', detail: '官方会话正在处理；行动与证据将持续更新' };
     saveProject(project);
@@ -81,15 +86,19 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
   }
   const server = createServer(async (request, response) => {
     try {
+      if (closing) return json(response, 503, { error: '服务正在关闭，未接受新的任务。' });
       const url = new URL(request.url, 'http://127.0.0.1');
-      if (request.method === 'GET' && url.pathname === '/api/config') return json(response, 200, configStatus(env));
+      if (request.method === 'GET' && url.pathname === '/api/config') return json(response, 200, {
+        ...configStatus(env), limits: httpBudget.limits, serverLimits: httpBudget.sharedLimits });
       if (request.method === 'POST' && url.pathname === '/api/projects') {
         const input = await body(request);
+        if (closing) return json(response, 503, { error: '服务正在关闭，未接受新的任务。' });
         if (input.mode === 'live' && validationRun.liveStopped)
           return json(response, 409, { error: '本轮真实验证已因错误停止；不能启动后续真实案例。' });
         if (input.mode === 'live' && !configStatus(env).modes.live.available)
           return json(response, 409, { error: '真实模式未单独启用或缺少明确配置；离线演示无需密钥。' });
         const project = createProject(input);
+        httpBudget.bind(project, true);
         projects.set(project.id, project);
         schedule(project, project.brief.request);
         return json(response, 202, { project });
@@ -102,6 +111,7 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
         if (request.method === 'POST' && match[2]) {
           if (project.status.phase === 'busy') return json(response, 409, { error: '当前任务仍在处理，请稍后补充。', code: 'PROJECT_BUSY' });
           const input = await body(request);
+          if (closing) return json(response, 503, { error: '服务正在关闭，未接受新的任务。' });
           if (match[2] === 'select' && !match[3]) {
             selectConcept(project, input); saveProject(project);
             return json(response, 200, { project });
@@ -154,9 +164,12 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
       ...(error.code ? { code: error.code, path: error.path } : {}) }); }
   });
   return { server, projects, saveProject, async dispose() {
+    closing = true;
+    const closed = server.listening ? new Promise((done, reject) => server.close(error => error ? reject(error) : done())) : Promise.resolve();
     await queue;
     await Promise.all([...runtimes.values()].map(runtime => runtime.dispose()));
-    if (server.listening) await new Promise((done, reject) => server.close(error => error ? reject(error) : done()));
+    await closed;
+    httpBudget.persist(); httpBudget.release();
   } };
 }
 

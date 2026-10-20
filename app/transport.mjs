@@ -1,30 +1,107 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { LIMITS, SERVER_LIMITS } from './state.mjs';
 
 const context = new AsyncLocalStorage();
 const originalFetch = globalThis.fetch;
 export const serverUsage = { modelHttpAttempts: 0, qlooHttpAttempts: 0 };
 export const validationRun = { queryStopped: false, liveStopped: false, attempts: [] };
+const projectBudgets = new WeakMap();
+const usageKeys = Object.keys(LIMITS);
+const validCount = value => Number.isSafeInteger(value) && value >= 0;
+const validUsage = value => value && usageKeys.every(key => validCount(value[key]));
+const configurationError = () => Object.assign(new Error('HTTP 预算配置或持久化摘要无效；真实调用未启用。'), { code: 'HTTP_BUDGET_CONFIG_INVALID' });
+
+// Only the server calls this entry. Client input and model tools cannot bind a budget.
+export function createHttpBudget({ env = {}, dataDir, onReserve = () => {} }) {
+  const names = ['ART_MODEL_HTTP_LIMIT', 'ART_QLOO_HTTP_LIMIT'];
+  const configured = names.some(name => env[name] !== undefined);
+  const limits = Object.fromEntries(usageKeys.map((key, index) => {
+    const value = env[names[index]];
+    if (value === undefined) return [key, LIMITS[key]];
+    if ((typeof value !== 'string' || !/^\d+$/.test(value)) && typeof value !== 'number') throw configurationError();
+    const parsed = Number(value);
+    if (!validCount(parsed)) throw configurationError();
+    return [key, parsed];
+  }));
+  const sharedLimits = configured ? { ...limits } : { ...SERVER_LIMITS };
+  const directory = resolve(dataDir, '.http-budget');
+  mkdirSync(directory, { recursive: true });
+  const path = resolve(directory, 'run.json');
+  const lockPath = resolve(directory, 'active.lock');
+  let lock;
+  try { lock = openSync(lockPath, 'wx'); writeFileSync(lock, String(process.pid)); }
+  catch {
+    if (lock !== undefined) { closeSync(lock); unlinkSync(lockPath); }
+    throw configurationError();
+  }
+  let released = false;
+  const release = () => { if (!released) { closeSync(lock); unlinkSync(lockPath); released = true; } };
+  const registeredProjects = Object.create(null);
+  const summary = () => ({ schemaVersion: 1, limits, sharedLimits, usage: { ...serverUsage }, registeredProjects,
+    queryStopped: validationRun.queryStopped, liveStopped: validationRun.liveStopped,
+    ...(validationRun.failure ? { failure: validationRun.failure } : {}) });
+  const persist = () => {
+    if (released) throw configurationError();
+    const temporary = `${path}.tmp`;
+    writeFileSync(temporary, JSON.stringify(summary()), 'utf8');
+    renameSync(temporary, path);
+  };
+  try {
+    if (existsSync(path)) {
+      const saved = JSON.parse(readFileSync(path, 'utf8'));
+      if (saved.schemaVersion !== 1 || JSON.stringify(saved.limits) !== JSON.stringify(limits)
+        || JSON.stringify(saved.sharedLimits) !== JSON.stringify(sharedLimits) || !validUsage(saved.usage)
+        || typeof saved.queryStopped !== 'boolean' || typeof saved.liveStopped !== 'boolean'
+        || !saved.registeredProjects || typeof saved.registeredProjects !== 'object' || Array.isArray(saved.registeredProjects)) throw configurationError();
+      for (const [id, entry] of Object.entries(saved.registeredProjects)) {
+        if (!/^[a-zA-Z0-9_-]+$/.test(id) || !validUsage(entry?.limits) || !validUsage(entry?.usage)
+          || ![limits, LIMITS].some(allowed => usageKeys.every(key => entry.limits[key] === allowed[key]))) throw configurationError();
+        registeredProjects[id] = entry;
+      }
+      for (const key of usageKeys) serverUsage[key] = Math.max(serverUsage[key], saved.usage[key]);
+      validationRun.queryStopped ||= saved.queryStopped;
+      validationRun.liveStopped ||= saved.liveStopped;
+      validationRun.failure ??= saved.failure;
+    }
+    persist();
+  } catch { release(); throw configurationError(); }
+  const budget = { limits: Object.freeze(limits), sharedLimits: Object.freeze(sharedLimits), summary, persist, release,
+    bind(project, isNew = false) {
+      let entry = registeredProjects[project.id];
+      if (!entry) entry = registeredProjects[project.id] = {
+        limits: { ...(isNew ? limits : LIMITS) }, usage: Object.fromEntries(usageKeys.map(key => [key, project.usage[key]])) };
+      if (!validUsage(project.usage)) throw configurationError();
+      for (const key of usageKeys) project.usage[key] = Math.max(project.usage[key], entry.usage[key]);
+      projectBudgets.set(project, { budget, entry, onReserve });
+      persist();
+    } };
+  return budget;
+}
 
 function projectLimits(project) {
+  const boundLimits = projectBudgets.get(project)?.entry.limits;
+  const limits = boundLimits ?? LIMITS;
   const validation = project.runtime.validation;
   return validation && Number.isInteger(validation.modelHttpLimit) && validation.modelHttpLimit >= 0
     && validation.modelHttpLimit <= 10 && validation.qlooHttpLimit === 0
-    ? { modelHttpAttempts: validation.modelHttpLimit, qlooHttpAttempts: 0 } : LIMITS;
+    ? { modelHttpAttempts: Math.min(boundLimits?.modelHttpAttempts ?? validation.modelHttpLimit, validation.modelHttpLimit), qlooHttpAttempts: 0 } : limits;
 }
 
 export function remainingBudget(project) {
   const limits = projectLimits(project);
+  const sharedLimits = projectBudgets.get(project)?.budget.sharedLimits ?? SERVER_LIMITS;
   const caseRemaining = {}, sharedRemaining = {};
   for (const key of Object.keys(LIMITS)) {
     caseRemaining[key] = Math.max(0, limits[key] - project.usage[key]);
-    sharedRemaining[key] = Math.max(0, SERVER_LIMITS[key] - serverUsage[key]);
+    sharedRemaining[key] = Math.max(0, sharedLimits[key] - serverUsage[key]);
   }
   const queryStopped = Boolean(project.runtime.queryStopped || (project.mode === 'live' && validationRun.queryStopped));
   return { modelHttpAttempts: Math.min(caseRemaining.modelHttpAttempts, sharedRemaining.modelHttpAttempts),
     qlooHttpAttempts: queryStopped ? 0 : Math.min(caseRemaining.qlooHttpAttempts, sharedRemaining.qlooHttpAttempts),
-    caseRemaining, sharedRemaining, caseLimits: limits, sharedLimits: SERVER_LIMITS, queryStopped };
+    caseRemaining, sharedRemaining, caseLimits: limits, sharedLimits, queryStopped };
 }
 
 export function toolFeedback(project, code, path, reason, correctable = false, nextAction, diagnostic) {
@@ -169,6 +246,7 @@ export function stopLiveRun(project, failure, stopQueries = false) {
   if (stopQueries) validationRun.queryStopped = true;
   else validationRun.liveStopped = true;
   validationRun.failure ??= failure;
+  projectBudgets.get(project)?.budget.persist();
 }
 
 // Only fixed summaries, observed status, and bounded whitelisted provider fields
@@ -207,10 +285,21 @@ export function budgetedFetch(implementation = originalFetch) {
     const key = kind === 'model' ? 'modelHttpAttempts' : 'qlooHttpAttempts';
     if (kind === 'qloo' && (project.runtime.queryStopped || validationRun.queryStopped))
       throw recordLocalFailure(project, kind, 'QLOO_QUERY_STOPPED', '本轮真实查询已经停止');
-    if (project.usage[key] >= projectLimits(project)[key] || serverUsage[key] >= SERVER_LIMITS[key])
+    const binding = projectBudgets.get(project);
+    const sharedLimits = binding?.budget.sharedLimits ?? SERVER_LIMITS;
+    if (project.usage[key] >= projectLimits(project)[key] || serverUsage[key] >= sharedLimits[key])
       throw recordLocalFailure(project, kind, kind === 'model' ? 'MODEL_HTTP_BUDGET_EXHAUSTED' : 'QLOO_HTTP_BUDGET_EXHAUSTED', `${kind} HTTP 总额度已用尽`);
     project.usage[key]++;
     serverUsage[key]++;
+    if (binding) {
+      for (const usageKey of usageKeys) binding.entry.usage[usageKey] = project.usage[usageKey];
+      try { binding.budget.persist(); binding.onReserve(project); }
+      catch {
+        validationRun.liveStopped = true;
+        try { binding.budget.persist(); } catch { /* Fail closed even when the ledger itself cannot be written. */ }
+        throw recordLocalFailure(project, kind, 'HTTP_BUDGET_PERSISTENCE_FAILED', '请求额度无法保存；未发送请求，本轮停止。');
+      }
+    }
     const started = Date.now();
     const entry = { kind, time: new Date(started).toISOString(), status: null, durationMs: null,
       method: String(options.method ?? url?.method ?? 'GET').toUpperCase(), host: destination.host, path: destination.pathname,
