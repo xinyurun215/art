@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createProject } from '../app/state.mjs';
-import { createProductRuntime } from '../app/runtime.mjs';
+import { createProductRuntime, TOOL_NAMES } from '../app/runtime.mjs';
 import { createDiagnosticFetch, safeProviderError, safeRuntimeFailure } from '../app/transport.mjs';
 import { mockCalls, mockToolResponse, runDiagnostic } from '../validation/deepseek-diagnostic/diagnose.mjs';
 
@@ -107,7 +107,7 @@ test('actual installed SDK final JSON and official session pause all three paral
   assert.equal(body.max_tokens, 12000);
   assert.equal(body.max_completion_tokens, undefined);
   assert.equal(body.thinking, undefined);
-  assert.deepEqual(body.tools.map(tool => tool.function.name), ['qloo_describe', 'qloo_recommend', 'propose_design_response']);
+  assert.deepEqual(body.tools.map(tool => tool.function.name), TOOL_NAMES);
   const schemaRuntime = await createProductRuntime(createProject({ brief: { request: 'offline schema inspection' } }), { env: {} });
   try {
     for (const tool of body.tools) {

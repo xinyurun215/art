@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join, resolve, sep } from 'node:path';
 import { createQlooTools } from '@qloo/qloo-harness';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
+import { evidenceView, assembleContext, readProjectEvidence, requestBudget } from '../app/context.mjs';
 import { createProductRuntime, recordEvidence, wrapProjectExecutor } from '../app/runtime.mjs';
 import { budgetedFetch, createDiagnosticFetch, remainingBudget, serverUsage, validationRun, withHttpBudget } from '../app/transport.mjs';
 import { beginPendingFeedback, beginRevision, createProject, proposeRevision, selectConcept } from '../app/state.mjs';
@@ -75,7 +76,7 @@ test('two live submissions use separate persisted sessions with the configured o
     assert.equal(sent.length, 2);
     assert(sent.every(body => body.max_tokens === 12000));
     assert(sent.every(body => body.thinking?.type === 'disabled'));
-    assert(sent.every(body => body.tools.length === 1 && body.tools[0].function.name === 'propose_concept_revision'));
+    assert(sent.every(body => body.tools.length === 2 && body.tools[0].function.name === 'propose_concept_revision' && body.tools[1].function.name === 'read_project_evidence'));
     const attempts = project.runtime.httpAttempts.filter(attempt => attempt.kind === 'model').slice(-2);
     assert.equal(attempts.length, 2);
     assert(attempts.every(attempt => attempt.generationBudget.model === 'deepseek-flash'
@@ -162,6 +163,69 @@ test('Qloo tool JSON keeps complete results once and evidence metadata maps to t
   }
 });
 
+test('every mocked live send stays bounded through giant Qloo, exact read and proposal correction rounds', async t => {
+  const { project } = replay(t);
+  delete project.revisionRequest;
+  Object.assign(project, { evidence: [], concepts: [], revisions: [], version: 1, selectedConceptId: null });
+  Object.assign(serverUsage, { modelHttpAttempts: 0, qlooHttpAttempts: 0 });
+  validationRun.queryStopped = false; delete validationRun.failure;
+  const raw = evidenceResult(10);
+  raw.results[0].properties.description = 'Synthetic giant field. '.repeat(20000);
+  const rawBefore = structuredClone(raw);
+  const sends = [];
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = budgetedFetch(async (url, options) => {
+    assert.equal(new URL(String(url)).origin, env.ART_MODEL_BASE_URL);
+    const body = JSON.parse(options.body); sends.push(body);
+    assert.equal(body.max_tokens, 12000);
+    assert.equal(requestBudget(body, { contextWindow: 32000, maxTokens: 12000 }).fits, true);
+    const card = project.evidence[0];
+    let name = 'qloo_describe', args = { entity: 'Synthetic seed', type: 'artist' };
+    if (sends.length === 2) { name = 'read_project_evidence'; args = { evidenceId: card.id, entityId: 'synthetic-result-1', field: 'properties.description' }; }
+    if (sends.length >= 3) {
+      name = 'propose_design_response';
+      const link = { evidenceId: card.id, entityId: 'synthetic-result-1',
+        observedField: sends.length === 3 ? 'properties.absent' : 'properties.description',
+        observedValue: raw.results[1].properties.description, observation: 'Synthetic exact field', inspiration: 'Synthetic design inference; effects unknown' };
+      args = { baseVersion: project.version, phase: 'ready', summary: 'Synthetic bounded proposal', concepts: ['a', 'b'].map(id => ({ id, title: id,
+        coreClaim: '触摸样本并记录观察', mechanism: { organization: id, description: '触摸样本并记录观察' },
+        journey: ['到场', '参与', '带走'].map(stage => ({ stage, action: '触摸样本并记录观察' })), productTouchpoints: ['触摸样本'],
+        evidenceLinks: [link], openQuestions: ['容量未知'], unverifiedEffects: ['效果未知'] })) };
+    }
+    const chunk = (delta, finish_reason = null, usage) => `data: ${JSON.stringify({ id: 'synthetic-bounded-live', object: 'chat.completion.chunk', created: 0,
+      model: 'deepseek-flash', choices: [{ index: 0, delta, finish_reason }], ...(usage ? { usage } : {}) })}\n\n`;
+    return new Response(chunk({ role: 'assistant', reasoning_content: 'SYNTHETIC_PROTOCOL_ONLY', tool_calls: [{ index: 0, id: `live-${sends.length}`, type: 'function',
+      function: { name, arguments: JSON.stringify(args) } }] }) + chunk({}, 'tool_calls', { prompt_tokens: 50000, completion_tokens: 20000, total_tokens: 70000 }) + 'data: [DONE]\n\n',
+    { headers: { 'content-type': 'text/event-stream' } });
+  });
+  t.after(() => { globalThis.fetch = previousFetch; });
+  const runtime = await createProductRuntime(project, { env });
+  const fake = wrapProjectExecutor(project, { transport: { kind: 'direct', remote: false },
+    async execute() { return { result: raw, correlationId: 'synthetic-no-qloo-http' }; } }, env);
+  const qloo = createQlooTools({ executor: fake }).find(tool => tool.name === 'qloo_describe');
+  const originalBefore = runtime.session.agent.beforeToolCall;
+  runtime.session.agent.beforeToolCall = async context => {
+    const previous = await originalBefore(context);
+    if (context.toolCall.name === qloo.name) context.context.tools.find(tool => tool.name === qloo.name).execute = qloo.execute;
+    return previous;
+  };
+  try {
+    await runtime.submit('Synthetic giant evidence and continuous proposal correction');
+    assert.equal(sends.length, 4, JSON.stringify({ failure: project.runtime.failure, budget: project.runtime.generationBudget,
+      feedback: project.runtime.feedback, toolNames: project.runtime.toolNames }));
+    assert.equal(project.version, 2); assert.equal(project.concepts.length, 2);
+    assert.deepEqual(project.evidence[0].rawResult, rawBefore);
+    assert.equal(project.usage.modelHttpAttempts, 4); assert.equal(project.usage.qlooHttpAttempts, 0);
+    assert.equal(project.runtime.failure, undefined);
+    assert.equal(project.runtime.sessionHistory?.length ?? 0, 0);
+    assert.equal(project.runtime.generationBudget.finalMaxTokens, 12000);
+    for (const body of sends.slice(1)) {
+      assert.equal(body.messages.filter(message => message.role === 'assistant').length, 1);
+      assert.equal(body.messages.filter(message => message.role === 'tool').length, 1);
+    }
+  } finally { await runtime.dispose(); }
+});
+
 test('initial model payload omits duplicate raw evidence results and preserves unique workflow context', async t => {
   const { project } = replay(t);
   delete project.revisionRequest;
@@ -180,8 +244,9 @@ test('initial model payload omits duplicate raw evidence results and preserves u
     const user = bodies[0].messages.find(message => message.role === 'user');
     const current = JSON.parse(typeof user.content === 'string' ? user.content : user.content.map(block => block.text ?? '').join(''));
     assert.equal(JSON.stringify(current.project.evidence).includes('"rawResult"'), false);
-    assert.deepEqual(current.project.evidence, [{ ...modelCard, workflowContext }]);
-    assert.deepEqual(current.project.evidence[0].returnedEntities, result.results);
+    assert.deepEqual(current.project.evidence, [evidenceView(card)]);
+    assert.equal(current.project.evidence[0].returnedEntities.length, result.results.length);
+    assert.equal(current.project.evidence[0].returnedEntities[0].observedFields, undefined);
     assert.deepEqual(project.evidence, before);
     assert.equal(bodies[0].max_tokens, 12000);
     assert.equal(bodies[0].thinking, undefined);
@@ -275,155 +340,84 @@ async function contractRecovery(t, mode = 'proposal', condition = 'accept') {
   return { project, before, bodies, states, events, originalSession, endedHash, beforeToolCalls };
 }
 
-test('one fresh session accepts a real contract correction after the continued context cannot reserve output', async t => {
+test('proactive context accepts a contract correction in the same official session', async t => {
   for (const mode of ['proposal', 'revision']) {
-    const result = await contractRecovery(t, mode);
-    const { project, before, bodies, states, events, originalSession, endedHash } = result;
+    const { project, before, bodies, states, events, originalSession } = await contractRecovery(t, mode);
     assert.equal(bodies.length, 2);
     assert.equal(events[0].feedback.code, 'EVIDENCE_FIELD_MISSING');
-    assert.equal(events[0].feedback.correctable, true);
     assert(events[1].accepted === true || events[1].completed === true);
-    assert.deepEqual(states, [before, before], 'rejected candidate must not mutate authoritative business state');
-    const user = bodies[1].messages.find(message => message.role === 'user');
-    const current = JSON.parse(typeof user.content === 'string' ? user.content : user.content.map(block => block.text ?? '').join(''));
+    assert.deepEqual(states, [before, before]);
+    const content = bodies[1].messages.find(message => message.role === 'user').content;
+    const current = JSON.parse(typeof content === 'string' ? content : content.map(block => block.text).join(''));
     assert.equal(current.project.previousFeedback.code, 'EVIDENCE_FIELD_MISSING');
-    assert(current.project.evidence.every(card => !Object.hasOwn(card, 'rawResult')));
-    assert.deepEqual(current.project.evidence.map(card => card.returnedEntities), before.evidence.map(card => card.returnedEntities));
-    assert(bodies[1].messages.every(message => !['assistant', 'tool'].includes(message.role)));
-    assert.deepEqual(bodies[1].tools, bodies[0].tools);
+    for (const card of current.project.evidence) assert.deepEqual(card, evidenceView(before.evidence.find(saved => saved.id === card.id)));
+    assert(bodies[1].messages.some(message => message.role === 'assistant'));
+    assert(bodies[1].messages.some(message => message.role === 'tool'));
     assert(bodies.every(body => body.max_tokens === 12000));
-    assert(bodies.every(body => mode === 'revision' ? body.thinking?.type === 'disabled' : body.thinking === undefined));
+    assert.equal(project.runtime.sessionFile, originalSession);
+    assert.equal(project.runtime.sessionHistory?.length ?? 0, 0);
+    assert.equal(project.actions.filter(action => action.type === 'recovery').length, 0);
     assert.deepEqual(project.evidence, before.evidence);
-    assert.deepEqual(project.brief, before.brief);
-    assert.deepEqual(project.lockedFields, before.lockedFields);
-    assert.deepEqual(project.runtime.sessionHistory, [originalSession]);
-    assert.notEqual(project.runtime.sessionFile, originalSession);
-    assert.equal(fileHash(originalSession), endedHash);
-    const recoveries = project.actions.filter(action => action.type === 'recovery');
-    assert.equal(recoveries.length, 1);
-    const audit = recoveries[0].capacityRecovery;
-    assert.equal(audit.contextWindow, 32000); assert.equal(audit.safetyTokens, 4096); assert.equal(audit.reservedOutputTokens, 12000);
-    assert(audit.estimatedInputTokens + audit.safetyTokens + audit.reservedOutputTokens > audit.contextWindow);
-    assert.equal(audit.feedbackCode, 'EVIDENCE_FIELD_MISSING');
-    assert.deepEqual(Object.keys(audit).sort(), ['contextWindow', 'estimatedInputTokens', 'feedbackCode', 'feedbackPath',
-      'fromSessionId', 'inputEstimateIsLowerBound', 'model', 'reservedOutputTokens', 'safetyTokens', 'toSessionId']);
-    if (mode === 'proposal') { assert.equal(project.version, before.version + 1); assert.equal(project.concepts.length, 2); }
-    else { assert.equal(project.version, before.version); assert.deepEqual(project.concepts, before.concepts); assert.equal(project.revisions.at(-1).status, 'pending'); }
     assert.equal(project.usage.modelHttpAttempts, 2);
-    assert.equal(project.usage.modelCalls, 2);
     assert.equal(project.usage.qlooHttpAttempts, 0);
-    assert.equal(serverUsage.modelHttpAttempts, 2);
     assert.equal(project.runtime.failure, undefined);
     assert.equal(validationRun.liveStopped, false);
-    assert.equal(validationRun.failure, undefined);
+    assert.equal(project.runtime.generationBudget.estimateMethod, 'offline-serialized-ascii4-other1');
+    assert(project.runtime.generationBudget.estimatedInputTokens + 12000 + 4096 <= 32000);
   }
 });
 
-test('a repeated invalid contract gets only one fresh session and then the original capacity stop', async t => {
-  for (const [mode, condition] of [['proposal', 'reject-again'], ['revision', 'mechanism-extra-key-again']]) {
-    const { project, before, bodies, states, events, originalSession, endedHash } = await contractRecovery(t, mode, condition);
-    assert.equal(bodies.length, 2);
-    assert.deepEqual(states, [before, before]);
-    assert.deepEqual(authority(project), before);
-    assert.deepEqual(project.runtime.sessionHistory, [originalSession]);
-    assert.equal(project.actions.filter(action => action.type === 'recovery').length, 1);
-    assert.equal(fileHash(originalSession), endedHash);
-    assert.equal(project.runtime.failure?.code, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT');
-    assert.equal(project.usage.modelHttpAttempts, 2);
-    assert.equal(project.usage.modelCalls, 3);
-    assert.equal(project.usage.qlooHttpAttempts, 0);
-    assert.equal(validationRun.liveStopped, true);
-    if (mode === 'revision') assert(events.every(event => event.feedback?.code === 'REVISION_SCHEMA_INVALID'
-      && event.feedback.path === '/changes/0/after'));
-  }
-});
-
-test('revision field shapes including a mechanism empty key stay strict and recover once to a legal pending draft', async t => {
-  for (const condition of ['mechanism-extra-key', 'shape-title', 'shape-journey', 'shape-evidenceLinks', 'shape-unverifiedEffects']) {
-    const { project, before, bodies, states, events, originalSession, endedHash, beforeToolCalls }
-      = await contractRecovery(t, 'revision', condition);
+test('strict business and native schema corrections continue without a recovery session', async t => {
+  for (const condition of ['schema', 'mechanism-extra-key', 'shape-title', 'shape-journey', 'shape-evidenceLinks', 'shape-unverifiedEffects']) {
+    const { project, before, bodies, events, originalSession, beforeToolCalls } = await contractRecovery(t, 'revision', condition);
     assert.equal(bodies.length, 2, condition);
-    assert.equal(beforeToolCalls, 2, 'Unknown after passes SDK schema preflight; both candidates reach strict business validation');
+    assert.equal(beforeToolCalls, condition === 'schema' ? 1 : 2);
     assert.equal(events[0].isError, true);
-    assert.equal(events[0].feedback.code, 'REVISION_SCHEMA_INVALID');
-    assert.equal(events[0].feedback.path, '/changes/0/after');
-    assert.equal(events[0].feedback.correctable, true);
+    assert.equal(events[0].feedbackCode, 'REVISION_SCHEMA_INVALID');
     assert.equal(events[1].completed, true);
-    assert.deepEqual(states, [before, before]);
-    assert.deepEqual(project.concepts, before.concepts, 'both official A and B remain unchanged');
+    assert.deepEqual(project.concepts, before.concepts);
     assert.deepEqual(project.evidence, before.evidence);
-    assert.deepEqual(project.brief, before.brief);
-    assert.deepEqual(project.lockedFields, before.lockedFields);
     assert.equal(project.version, before.version);
     assert.equal(project.revisions.at(-1).status, 'pending');
-    if (condition === 'mechanism-extra-key')
-      assert.deepEqual(Object.keys(project.revisions.at(-1).changes[0].after).sort(), ['description', 'organization']);
-    const user = bodies[1].messages.find(message => message.role === 'user');
-    const current = JSON.parse(typeof user.content === 'string' ? user.content : user.content.map(block => block.text ?? '').join(''));
-    assert.deepEqual(current.project.evidence.map(card => card.returnedEntities), before.evidence.map(card => card.returnedEntities));
-    assert.equal(current.project.previousFeedback.code, 'REVISION_SCHEMA_INVALID');
-    assert.deepEqual(project.runtime.sessionHistory, [originalSession]);
-    assert.equal(fileHash(originalSession), endedHash);
-    const recoveries = project.actions.filter(action => action.type === 'recovery');
-    assert.equal(recoveries.length, 1);
-    assert.equal(recoveries[0].capacityRecovery.feedbackCode, 'REVISION_SCHEMA_INVALID');
-    assert.equal(recoveries[0].capacityRecovery.feedbackPath, '/changes/0/after');
-    assert.equal(project.usage.modelHttpAttempts, 2); assert.equal(project.usage.qlooHttpAttempts, 0);
-    assert.equal(project.runtime.failure, undefined); assert.equal(validationRun.liveStopped, false);
+    assert.equal(project.runtime.sessionFile, originalSession);
+    assert.equal(project.runtime.sessionHistory?.length ?? 0, 0);
+    assert.equal(project.usage.modelHttpAttempts, 2);
+    assert.equal(project.usage.qlooHttpAttempts, 0);
   }
 });
 
-test('native schema preflight rejection recovers once before any invalid business execution', async t => {
-  const { project, before, bodies, states, events, originalSession, endedHash, beforeToolCalls } = await contractRecovery(t, 'revision', 'schema');
-  assert.equal(bodies.length, 2);
-  assert.equal(beforeToolCalls, 1, 'only the corrected request reaches the business preflight hook');
-  assert.equal(events[0].isError, true);
-  assert.equal(events[0].feedback, undefined, 'the native schema rejection bypasses the product execute callback');
-  assert.equal(events[0].feedbackCode, 'REVISION_SCHEMA_INVALID');
-  assert.equal(events[0].feedbackPath, '/impact');
-  assert.equal(events[1].completed, true);
-  assert.deepEqual(states, [before, before]);
-  assert.deepEqual(project.evidence, before.evidence);
-  assert.deepEqual(project.concepts, before.concepts);
-  assert.equal(project.version, before.version);
-  assert.equal(project.revisions.at(-1).status, 'pending');
-  assert.deepEqual(project.runtime.sessionHistory, [originalSession]);
-  assert.equal(fileHash(originalSession), endedHash);
-  const recoveries = project.actions.filter(action => action.type === 'recovery');
-  assert.equal(recoveries.length, 1);
-  assert.equal(recoveries[0].capacityRecovery.feedbackCode, 'REVISION_SCHEMA_INVALID');
-  assert.equal(project.usage.modelHttpAttempts, 2);
-  assert.equal(project.usage.qlooHttpAttempts, 0);
-  assert.equal(project.runtime.failure, undefined);
-  assert.equal(validationRun.liveStopped, false);
+test('continuous invalid proposals stop at the existing HTTP limit without changing authority', async t => {
+  for (const [mode, condition] of [['proposal', 'reject-again'], ['revision', 'mechanism-extra-key-again'], ['revision', 'locked'], ['revision', 'no-change']]) {
+    const { project, before, bodies, originalSession } = await contractRecovery(t, mode, condition);
+    assert.equal(bodies.length, remainingBudget(project).caseLimits.modelHttpAttempts, condition);
+    assert.deepEqual(authority(project), before);
+    assert.equal(project.runtime.sessionFile, originalSession);
+    assert.equal(project.runtime.sessionHistory?.length ?? 0, 0);
+    assert.equal(project.runtime.feedback.remainingBudget.modelHttpAttempts, 0);
+    assert.equal(project.usage.qlooHttpAttempts, 0);
+  }
 });
 
-test('capacity recovery respects initial overflow, current contract identity, HTTP budget and existing stop conditions', async t => {
-  for (const condition of ['oversized', 'locked', 'no-change', 'stale-feedback', 'exhausted', 'global-stop', 'existing-failure', 'http-error']) {
-    const { project, before, bodies, events } = await contractRecovery(t, ['locked', 'no-change'].includes(condition) ? 'revision' : 'proposal', condition);
+test('proactive context respects irreducible overflow and existing stop gates', async t => {
+  for (const condition of ['oversized', 'stale-feedback', 'exhausted', 'global-stop', 'existing-failure', 'http-error']) {
+    const { project, before, bodies } = await contractRecovery(t, 'proposal', condition);
     assert.equal(bodies.length, condition === 'oversized' ? 0 : 1, condition);
-    assert.equal(project.runtime.sessionHistory?.length ?? 0, 0, condition);
-    assert.equal(project.actions.filter(action => action.type === 'recovery').length, 0, condition);
-    assert.deepEqual(authority(project), before, condition);
-    if (condition === 'locked') {
-      assert.equal(events[0].feedback.code, 'FIELD_LOCKED');
-      assert.equal(events[0].feedback.correctable, true);
-      assert.equal(project.runtime.failure?.code, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT');
+    assert.equal(project.runtime.sessionHistory?.length ?? 0, 0);
+    assert.deepEqual(authority(project), before);
+    if (condition === 'oversized') {
+      assert.equal(project.runtime.failure.code, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT');
+      assert(project.runtime.generationBudget.components.work > 32000);
+      assert.equal(project.runtime.generationBudget.largestComponent, 'work');
+      assert(project.runtime.failure.reason.includes('当前工作状态'));
+      assert(project.runtime.generationBudget.overByTokens > 0);
     }
-    if (condition === 'no-change') {
-      assert.equal(events[0].feedback.code, 'REVISION_INVALID');
-      assert.equal(events[0].feedback.path, '/changes/0/after');
-      assert.equal(events[0].feedback.correctable, true);
-      assert.equal(project.runtime.failure?.code, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT');
-    }
-    if (condition === 'exhausted') assert.equal(project.usage.modelHttpAttempts, remainingBudget(project).caseLimits.modelHttpAttempts);
-    if (condition === 'global-stop') { assert.equal(validationRun.liveStopped, true); assert.equal(validationRun.failure.code, 'SYNTHETIC_DURABLE_STOP'); }
+    if (condition === 'global-stop') assert.equal(validationRun.failure.code, 'SYNTHETIC_DURABLE_STOP');
     if (condition === 'existing-failure') assert.equal(project.runtime.failure.code, 'SYNTHETIC_EXISTING_FAILURE');
   }
 });
 
 test('revision thinking override preserves payload hooks and the final output-capacity gate', async t => {
-  for (const kind of ['mutate', 'replace', 'reduced-output']) {
+  for (const kind of ['mutate', 'replace', 'reduced-output', 'oversized-wrapper']) {
     const { project } = replay(t);
     if (kind === 'mutate') {
       project.revisions = [];
@@ -438,17 +432,19 @@ test('revision thinking override preserves payload hooks and the final output-ca
       assert.equal(model.api, 'openai-completions');
       await Promise.resolve();
       const updated = { ...payload, temperature: 0.25, thinking: { type: 'enabled' },
-        ...(kind === 'reduced-output' ? { max_tokens: 11999 } : {}) };
+        ...(kind === 'reduced-output' ? { max_tokens: 11999 } : {}),
+        ...(kind === 'oversized-wrapper' ? { injectedWrapper: 'synthetic oversized wrapper '.repeat(10000) } : {}) };
       if (kind === 'mutate') Object.assign(payload, updated);
       else return updated;
     };
     try {
       await runtime.submit(project.revisionRequest.text);
       assert.equal(hooks, 1);
-      if (kind === 'reduced-output') {
+      if (['reduced-output', 'oversized-wrapper'].includes(kind)) {
         assert.equal(bodies.length, 0);
         assert.equal(project.runtime.failure?.code, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT');
-        assert.equal(project.runtime.generationBudget.finalMaxTokens, 11999);
+        assert.equal(project.runtime.generationBudget.finalMaxTokens, kind === 'reduced-output' ? 11999 : 12000);
+        if (kind === 'oversized-wrapper') assert(project.runtime.generationBudget.components.wrappers > 32000);
       } else {
         assert.equal(bodies.length, 1);
         assert.deepEqual(bodies[0].thinking, { type: 'disabled' });
@@ -534,6 +530,37 @@ test('saved pending-feedback state starts a fresh live context and preserves its
     assert.deepEqual(project.concepts, confirmed);
     assert.deepEqual(project.revisions, pending);
   } finally { await runtime.dispose(); }
+});
+
+test('unconfirmed saved observations survive fresh user submissions and runtime restart without rewriting closed sessions', async t => {
+  const { project, directory } = replay(t);
+  const sessionDir = join(directory, 'sessions'); mkdirSync(sessionDir, { recursive: true });
+  const old = SessionManager.create(root, sessionDir);
+  old.appendMessage({ role: 'user', content: [{ type: 'text', text: '{"message":"Synthetic original research"}' }], timestamp: 1 });
+  old.appendMessage({ role: 'assistant', content: [{ type: 'toolCall', id: 'unconfirmed', name: 'qloo_describe', arguments: { entity: 'Synthetic ambiguous input' } }],
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 }, stopReason: 'toolUse', timestamp: 2 });
+  const unresolved = { status: 'needs_input', resolution: { candidates: [{ entity_id: 'candidate', name: 'Synthetic unconfirmed candidate' }], confirmed: false }, results: [] };
+  old.appendMessage({ role: 'toolResult', toolCallId: 'unconfirmed', toolName: 'qloo_describe', details: unresolved,
+    content: [{ type: 'text', text: JSON.stringify(unresolved) }], timestamp: 3 });
+  const oldPath = old.getSessionFile(), oldBytes = readFileSync(oldPath);
+  project.runtime.sessionFile = oldPath;
+  const closed = new Map([[oldPath, oldBytes]]);
+  for (let pass = 0; pass < 2; pass++) {
+    if (pass) beginPendingFeedback(project, project.revisions[0].id, { baseVersion: project.version, text: 'Synthetic next user feedback' });
+    const { bodies, guarded } = mockTransport();
+    const runtime = await createProductRuntime(project, { env, diagnostic: { fetch: guarded.fetch } });
+    try {
+      await runtime.submit(project.revisionRequest.text);
+      assert.equal(bodies.length, 1);
+      const content = bodies[0].messages.find(message => message.role === 'user').content;
+      const current = JSON.parse(typeof content === 'string' ? content : content.map(block => block.text).join('')).project;
+      assert.equal(current.openResearchQuestions.length, 1);
+      assert.equal(current.openResearchQuestions[0].confirmed, false);
+      assert.deepEqual(current.openResearchQuestions[0].result.resolution, unresolved.resolution);
+      for (const [path, bytes] of closed) assert.deepEqual(readFileSync(path), bytes);
+    } finally { await runtime.dispose(); }
+    closed.set(project.runtime.sessionFile, readFileSync(project.runtime.sessionFile));
+  }
 });
 
 test('pending feedback keeps current draft and change metadata within capacity while historical delta stays authoritative', async t => {

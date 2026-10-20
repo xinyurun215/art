@@ -5,20 +5,22 @@ import { randomUUID } from 'node:crypto';
 import { createPiHarnessRuntime, resolveQlooPaths, createQlooTools,
   createDelegatingQlooWorkflowExecutor, createDirectQlooWorkflowExecutorFromEnvironment,
   withPiAgentDirectory, withPiPrivacyDefaults } from '@qloo/qloo-harness';
-import { ModelRuntime, SessionManager } from '@earendil-works/pi-coding-agent';
+import { ModelRuntime, SessionManager, parseSessionEntries, buildSessionContext } from '@earendil-works/pi-coding-agent';
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
-import { clampMaxTokensToContext } from '@earendil-works/pi-ai/api/simple-options';
 import { Type } from 'typebox';
 import { Errors } from 'typebox/value';
 import { applyProposal, proposeRevision, pendingRevisionDraft, finishRevisionRequest, REVISION_FIELDS, action, configStatus } from './state.mjs';
 import { withHttpBudget, withoutNetwork, validationRun, stopLiveRun, safeRuntimeFailure,
   remainingBudget, toolFeedback, recordLocalFailure, modelOutputLimit } from './transport.mjs';
+import { evidenceView, readProjectEvidence, qlooResultView, compactToolMessages, unresolvedResearch, assembleContext, requestBudget } from './context.mjs';
 
 const fixture = JSON.parse(readFileSync(new URL('../fixtures/culture-signals.json', import.meta.url)));
-export const TOOL_NAMES = Object.freeze(['qloo_describe', 'qloo_recommend', 'propose_design_response']);
-export const REVISION_TOOL_NAMES = Object.freeze(['propose_concept_revision']);
+export const TOOL_NAMES = Object.freeze(['qloo_describe', 'qloo_recommend', 'propose_design_response', 'read_project_evidence']);
+export const REVISION_TOOL_NAMES = Object.freeze(['propose_concept_revision', 'read_project_evidence']);
 const toolText = message => typeof message.content === 'string' ? message.content :
   (message.content ?? []).filter(c => c.type === 'text').map(c => c.text).join('');
+const contextCapacityReason = budget => `完整请求的离线估算超过本地上下文预算 ${budget.overByTokens} 个词元；最大组成是${
+  { system: '系统指令', work: '当前工作状态', history: '最近工具回合', tools: '工具定义', wrappers: '请求包装字段' }[budget.largestComponent]}。已保留输出和安全余量，本地停止并保留状态。`;
 const projectEvidenceReference = reference => {
   const { observation, ...fields } = reference;
   const derived = `实际返回 ${reference.observedField} = ${JSON.stringify(reference.observedValue)}；${reference.basis === 'affinity'
@@ -38,11 +40,7 @@ const snapshotProject = project => {
     .map(reference => reference.evidenceId));
   const relevant = project.evidence.filter(card => card.relevant !== false);
   const linked = relevant.filter(card => referenced.has(card.id));
-  const evidence = (target && linked.length ? linked : relevant).map(({ rawResult, ...card }) => {
-    if (!rawResult) return card;
-    const { results, ...workflowContext } = rawResult;
-    return { ...card, workflowContext };
-  });
+  const evidence = (target && linked.length ? linked : relevant).map(card => evidenceView(card, project.mode === 'offline'));
   return structuredClone({ id: project.id, version: project.version,
   brief: project.brief, evidence, concepts: project.concepts,
   questions: project.questions, status: project.status, selectedConceptId: project.selectedConceptId,
@@ -434,7 +432,6 @@ export async function createProductRuntime(project, { env = process.env, decide 
   }
   const provider = project.mode === 'offline' ? `offline-${project.id}` : env.ART_MODEL_PROVIDER;
   const modelId = project.mode === 'offline' ? 'synthetic-design-fixture' : env.ART_MODEL_ID;
-  const outputSafetyTokens = 4096;
   modelRuntime.registerProvider(provider, { api: project.mode === 'offline' ? 'art-offline-fixture' : env.ART_MODEL_API,
     baseUrl: project.mode === 'offline' ? 'https://offline.invalid' : env.ART_MODEL_BASE_URL,
     apiKey: project.mode === 'offline' ? 'synthetic-local-only' : env.ART_MODEL_API_KEY,
@@ -456,16 +453,17 @@ export async function createProductRuntime(project, { env = process.env, decide 
         project.runtime.modelResultReads += read.length;
         return syntheticStream(model, decide(context, snapshotProject(project)));
       }
-      const availableOutput = clampMaxTokensToContext(model, context, model.contextWindow);
-      const capacity = { model: model.id, contextWindow: model.contextWindow,
-        estimatedInputTokens: Math.max(0, model.contextWindow - outputSafetyTokens - availableOutput),
-        inputEstimateIsLowerBound: availableOutput === 1, safetyTokens: outputSafetyTokens,
-        reservedOutputTokens: model.maxTokens, finalMaxTokens: null };
+      let working = context;
+      let budget = requestBudget(working, model);
+      if (!budget.fits) {
+        working = { ...context, messages: compactToolMessages(context.messages, project) };
+        budget = requestBudget(working, model);
+      }
+      const capacity = { model: model.id, ...budget, finalMaxTokens: null };
       project.runtime.generationBudget = capacity;
-      if (availableOutput < model.maxTokens)
-        throw recordLocalFailure(project, 'model', 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT',
-          '当前上下文不足以保留配置的模型输出容量；请求已在本地停止，正式内容与待审稿保持不变。');
-      const stream = () => liveStream(model, context,
+      if (!capacity.fits) throw recordLocalFailure(project, 'model', 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT',
+        contextCapacityReason(capacity));
+      const stream = () => liveStream(model, working,
         { ...options, apiKey: env.ART_MODEL_API_KEY, transport: 'sse', maxRetries: 0, fetch: diagnostic?.fetch ?? globalThis.fetch,
           async onPayload(payload, payloadModel) {
             const updated = await options.onPayload?.(payload, payloadModel);
@@ -473,11 +471,12 @@ export async function createProductRuntime(project, { env = process.env, decide 
             if (project.revisionRequest?.status === 'running' && model.api === 'openai-completions'
               && new URL(model.baseUrl).origin === 'https://api.deepseek.com')
               finalPayload.thinking = { type: 'disabled' };
+            Object.assign(capacity, requestBudget(finalPayload, model));
             capacity.finalMaxTokens = modelOutputLimit(finalPayload);
-            if (capacity.finalMaxTokens !== model.maxTokens)
+            if (!capacity.fits || capacity.finalMaxTokens !== model.maxTokens)
               throw recordLocalFailure(project, 'model', 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT',
-                '模型请求的最终输出容量与配置不符；请求已在本地停止。');
-            return updated;
+                !capacity.fits ? contextCapacityReason(capacity) : '模型请求的最终输出容量与配置不符；请求已在本地停止。');
+            return finalPayload;
           } });
       return diagnostic ? stream() : withHttpBudget(project, 'model', env.ART_MODEL_BASE_URL, stream,
         [env.ART_MODEL_API_KEY, env.QLOO_API_KEY]);
@@ -501,6 +500,15 @@ export async function createProductRuntime(project, { env = process.env, decide 
   }
   const executor = wrapProjectExecutor(project, officialExecutor, env);
   const tools = createQlooTools({ executor }).filter(t => TOOL_NAMES.includes(t.name));
+  tools.push({ name: 'read_project_evidence', label: '读取当前项目已存证据字段',
+    description: 'Read saved evidence in this project, without HTTP or state changes. Supply evidenceId alone (plus optional offset) for at most 12 entity identities and nextOffset; supply entityId and entity-relative dotted field path for one saved entity field, e.g. properties.description or affinity. Without entityId, field may only be query or a query.* path on this evidence card, e.g. query.input.signals.0. Exact fields are limited to 6000 serialized characters. Only status ok and exact true is an exact citable value; missing or too_large previews must not be cited as a complete field. Cannot read another project, arbitrary card/project fields, files or URLs.',
+    parameters: Type.Object({ evidenceId: Type.String(), entityId: Type.Optional(Type.String({ description: 'Required for returned-entity fields; omit only for the entity index or allowlisted card query paths.' })),
+      field: Type.Optional(Type.String({ description: 'Entity-relative dotted field with entityId; only query or query.* without entityId. Numeric array indices are allowed; file, URL and prototype paths are forbidden.' })),
+      offset: Type.Optional(Type.Integer({ minimum: 0 })) }, { additionalProperties: false }),
+    async execute(_id, input) {
+      const result = readProjectEvidence(project, input);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
+    } });
   let submittedRevisionId = null;
   tools.push({ name: 'propose_concept_revision', label: '提出局部待审修改',
     description: 'Propose changes only to the server-bound selected concept and base version. For pending_feedback, changes are a delta from currentPendingDraft; omitted fields retain the existing pending values. Preserve unaffected entries and conditions within changed fields. Never submit project identity, target identity, base version, before values, full projects or concepts. Confirmed content is immutable until user acceptance. Return pending changes with reasons, exact existing evidence references, impact and unknowns, or needs_input/conflict with exactly one question and no changes. Evidence description/short_description can support explicitly marked design inference; affinity is only cultural association and cannot support description claims or effect scores. Existing historical evidence links must be preserved; do not repair or revalidate unrelated content. Structural example only; replace placeholders with actual allowed changes and exact saved evidence values: {"phase":"pending","summary":"<revision-summary>","changes":[{"field":"evidenceLinks","after":[{"evidenceId":"<card-id>","entityId":"<returned-entity-id>","observedField":"properties.description","observedValue":"<complete-actual-field-value>","observation":"<actual-observation>","inspiration":"<explicit-design-inference>"}],"reason":"<reason-for-this-change>","evidenceRefs":[{"evidenceId":"<card-id>","entityId":"<returned-entity-id>","observedField":"properties.description","observedValue":"<complete-actual-field-value>","inspiration":"<explicit-design-inference>"}]}],"impact":["<scope-and-consequences>"],"unknowns":["<actual-unverified-condition>"]}. Every changes item, especially evidenceLinks, must have all four keys field, after, reason, evidenceRefs; reason and evidenceRefs are siblings of after. The required top-level impact and unknowns arrays must also be present.',
@@ -547,6 +555,17 @@ export async function createProductRuntime(project, { env = process.env, decide 
   const sessionDirectory = resolve(root, '.art-runtime', project.id, 'sessions');
   const savedSession = project.runtime.sessionFile;
   const priorSession = savedSession && resolve(savedSession).startsWith(sessionDirectory + sep) && existsSync(savedSession);
+  let researchCarry = [];
+  for (const saved of new Set([...(project.runtime.sessionHistory ?? []), savedSession].filter(Boolean))) {
+    if (!resolve(saved).startsWith(sessionDirectory + sep) || !existsSync(saved)) continue;
+    // Parsing and building a context are public pure helpers; SessionManager.open
+    // can migrate and rewrite old files, so do not open a closed session to read it.
+    const savedText = readFileSync(saved, 'utf8');
+    const entries = parseSessionEntries(savedText);
+    if (entries.length !== savedText.split(/\r?\n/).filter(line => line.trim()).length)
+      throw new Error('当前项目的已存会话包含不可读取记录；停止并保留原文件。');
+    researchCarry = unresolvedResearch(buildSessionContext(entries.filter(entry => entry.type !== 'session')).messages, researchCarry);
+  }
   const sessionManager = project.mode === 'offline' && priorSession
     ? SessionManager.open(savedSession, sessionDirectory) : SessionManager.create(root, sessionDirectory);
   if (project.mode === 'live' && priorSession)
@@ -562,7 +581,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
       throw new Error('诊断暂停：禁止执行研究或提案工具');
     } })) : tools });
   const session = runtime.sessionRuntime.session;
-  let capacityRecovery = null;
+  let submittedMessage;
   session.setAutoRetryEnabled(false);
   if (project.mode === 'live') session.setAutoCompactionEnabled(false);
   if (diagnostic) {
@@ -595,6 +614,11 @@ export async function createProductRuntime(project, { env = process.env, decide 
       const previous = await originalAfterToolCall?.(context, signal);
       const result = { ...context.result, ...previous };
       const details = result.details;
+      if (['qloo_describe', 'qloo_recommend'].includes(context.toolCall.name) && details) {
+        const view = qlooResultView(details, project);
+        // Raw details stay in the saved tool result; only content.text is model-facing.
+        return { ...previous, content: [{ type: 'text', text: JSON.stringify(view) }], isError: context.isError || details.status === 'error' };
+      }
       if (details?.feedback) return { ...previous, isError: context.isError || details.status === 'error' };
       if (context.isError) {
         const feedback = toolFeedback(project, 'TOOL_EXECUTION_ERROR', '/', '工具执行失败；没有取得可用结果。');
@@ -626,10 +650,15 @@ export async function createProductRuntime(project, { env = process.env, decide 
       return transformed.map(message => {
         const feedback = message.role === 'toolResult' && (message.details?.feedback
           ?? (message.isError && rejectedCalls.get(message.toolCallId)));
-        if (!feedback) return message;
+        if (!feedback) {
+          if (['qloo_describe', 'qloo_recommend'].includes(message.toolName) && message.details)
+            return { ...message, content: [{ type: 'text', text: JSON.stringify(qlooResultView(message.details, project)) }] };
+          return message;
+        }
         const safe = { ...(message.details?.feedback ? message.details : { status: 'error' }),
           feedback: toolFeedback(project, feedback.code, feedback.path, feedback.reason, feedback.correctable, feedback.nextAction, feedbackFields(feedback)) };
-        return { ...message, content: [{ type: 'text', text: JSON.stringify(safe) }], details: safe };
+        const view = ['qloo_describe', 'qloo_recommend'].includes(message.toolName) ? qlooResultView(safe, project) : safe;
+        return { ...message, content: [{ type: 'text', text: JSON.stringify(view) }], details: safe };
       });
     };
     session.agent.shouldStopAfterTurn = async (context, signal) => {
@@ -646,27 +675,20 @@ export async function createProductRuntime(project, { env = process.env, decide 
           : toolFeedback(project, 'MODEL_HTTP_BUDGET_EXHAUSTED', '/', '模型 HTTP 总额度已用尽；尚无通过校验的提案，保留当前状态。');
         return true;
       }
-      if (project.mode !== 'live' || !capacityRecovery || capacityRecovery.used) return false;
-      const feedback = context.toolResults
-        .filter(result => result.isError && ['propose_design_response', 'propose_concept_revision'].includes(result.toolName))
-        .map(result => result.details?.feedback ?? rejectedCalls.get(result.toolCallId))
-        .find(feedback => feedback?.correctable === true && ['PROPOSAL_SCHEMA_INVALID', 'REVISION_SCHEMA_INVALID',
-          'EVIDENCE_REFERENCE_INVALID', 'EVIDENCE_ENTITY_INVALID', 'EVIDENCE_FIELD_MISSING', 'EVIDENCE_VALUE_MISMATCH',
-          'EVIDENCE_BASIS_MISMATCH'].includes(feedback.code));
-      if (!feedback) return false;
-      const transformed = await session.agent.transformContext(context.context.messages, signal);
-      const messages = await session.agent.convertToLlm(transformed);
-      const model = session.model;
-      const availableOutput = clampMaxTokensToContext(model, { ...context.context, messages }, model.contextWindow);
-      if (availableOutput >= model.maxTokens) return false;
-      project.runtime.feedback = feedback;
-      capacityRecovery.requested = { model: model.id, contextWindow: model.contextWindow,
-        estimatedInputTokens: Math.max(0, model.contextWindow - outputSafetyTokens - availableOutput),
-        inputEstimateIsLowerBound: availableOutput === 1, safetyTokens: outputSafetyTokens, reservedOutputTokens: model.maxTokens,
-        feedbackCode: feedback.code, feedbackPath: feedback.path };
-      return true;
+      return false;
     };
   }
+  const sanitizedContext = session.agent.transformContext;
+  session.agent.transformContext = async (messages, signal) => {
+    const safe = sanitizedContext ? await sanitizedContext(messages, signal) : messages;
+    researchCarry = unresolvedResearch(safe, researchCarry);
+    try { return assembleContext(safe, snapshotProject(project), submittedMessage, researchCarry); }
+    catch (error) {
+      if (error.code === 'MODEL_CONTEXT_PROTOCOL_INCOMPLETE')
+        throw recordLocalFailure(project, 'model', error.code, error.message);
+      throw error;
+    }
+  };
   session.setActiveToolsByName(TOOL_NAMES);
   await session.setModel(modelRuntime.getModel(provider, modelId));
   project.runtime.sessionId = session.sessionId;
@@ -724,11 +746,12 @@ export async function createProductRuntime(project, { env = process.env, decide 
     const revisionRequest = project.revisionRequest?.status === 'running' ? project.revisionRequest : null;
     submittedRevisionId = revisionRequest?.id ?? null;
     const activeTools = revisionRequest ? REVISION_TOOL_NAMES : TOOL_NAMES;
-    capacityRecovery = { used: false, requested: false };
+    submittedMessage = message;
     const freshSession = () => {
       (project.runtime.sessionHistory ??= []).push(sessionManager.getSessionFile());
       sessionManager.newSession();
-      session.agent.state.messages = [];
+      session.agent.reset();
+      session.agent.sessionId = sessionManager.getSessionId();
       project.runtime.sessionId = session.sessionId;
       project.runtime.sessionFile = sessionManager.getSessionFile();
     };
@@ -737,21 +760,9 @@ export async function createProductRuntime(project, { env = process.env, decide 
     project.runtime.toolNames = session.getActiveToolNames();
     try {
       await withoutNetwork(project, () => withPiAgentDirectory(paths.agentDir, () => withPiPrivacyDefaults(async () => {
-        for (let pass = 0; pass < 2; pass++) {
-          capacityRecovery.requested = false;
-          await session.prompt(JSON.stringify({ project: snapshotProject(project), message }),
-            { expandPromptTemplates: false, source: 'rpc' });
-          await session.waitForIdle();
-          if (!capacityRecovery.requested || capacityRecovery.used || validationRun.liveStopped
-            || (project.runtime.failure && project.runtime.failure.kind !== 'qloo')
-            || (project.runtime.localFailure && project.runtime.localFailure.kind !== 'qloo')
-            || remainingBudget(project).modelHttpAttempts === 0) break;
-          capacityRecovery.used = true;
-          const fromSessionId = session.sessionId;
-          freshSession();
-          action(project, 'recovery', '为修正参数开启新会话', '续轮容量不足；保留完整证据，仅恢复一次。').capacityRecovery = {
-            ...capacityRecovery.requested, fromSessionId, toSessionId: session.sessionId };
-        }
+        await session.prompt(JSON.stringify({ project: snapshotProject(project), message }),
+          { expandPromptTemplates: false, source: 'rpc' });
+        await session.waitForIdle();
       })));
     } catch (error) {
       project.runtime.failure ??= safeRuntimeFailure(project, 'model');
@@ -759,7 +770,6 @@ export async function createProductRuntime(project, { env = process.env, decide 
       if (revisionRequest?.status === 'running') finishRevisionRequest(project, revisionRequest, 'error', project.runtime.failure.summary);
       throw error;
     } finally {
-      capacityRecovery = null;
       project.runtime.totalLatencyMs = (project.runtime.totalLatencyMs ?? 0) + Math.max(0, Date.now() - started);
       const feedback = project.runtime.feedback;
       if (feedback) project.runtime.feedback = toolFeedback(project, feedback.code, feedback.path, feedback.reason,

@@ -193,7 +193,7 @@ export function summarizeModelRequest(body) {
     tools: Array.isArray(body.tools) ? body.tools.map(tool => {
       const schema = tool.function?.parameters;
       return { type: tool.type === 'function' ? 'function' : 'unexpected',
-        name: ['qloo_describe', 'qloo_recommend', 'propose_design_response'].includes(tool.function?.name) ? tool.function.name : 'unexpected-tool',
+        name: ['qloo_describe', 'qloo_recommend', 'propose_design_response', 'read_project_evidence'].includes(tool.function?.name) ? tool.function.name : 'unexpected-tool',
         strict: tool.function?.strict ?? null,
         parameterType: schema?.type === 'object' ? 'object' : 'unexpected',
         propertyNames: Object.keys(schema?.properties ?? {}), required: schema?.required ?? [],
