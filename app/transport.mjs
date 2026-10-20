@@ -166,8 +166,8 @@ export function createDiagnosticFetch(implementation = originalFetch, secrets = 
 
 export function stopLiveRun(project, failure, stopQueries = false) {
   if (project.mode !== 'live') return;
-  validationRun.liveStopped = true;
   if (stopQueries) validationRun.queryStopped = true;
+  else validationRun.liveStopped = true;
   validationRun.failure ??= failure;
 }
 

@@ -376,7 +376,10 @@ export function wrapProjectExecutor(project, officialExecutor, env = process.env
       if (project.mode === 'live') {
         project.runtime.failure = safeRuntimeFailure(project, 'qloo');
         stopLiveRun(project, project.runtime.failure, true);
-        return stoppedExecution(project, officialExecutor, operation, context);
+        const stopped = stoppedExecution(project, officialExecutor, operation, context);
+        if (project.runtime.localFailure?.kind !== 'qloo') stopped.result.feedback = toolFeedback(project,
+          'QLOO_REMOTE_ERROR', '/', '官方工作流执行失败；没有取得新的支持证据。');
+        return stopped;
       }
       throw error;
     }
@@ -632,7 +635,9 @@ export async function createProductRuntime(project, { env = process.env, decide 
     session.agent.shouldStopAfterTurn = async (context, signal) => {
       if (await originalShouldStop?.(context, signal)) return true;
       if (context.toolResults.some(result => result.details?.accepted === true || result.details?.completed === true)) return true;
-      if (project.mode === 'live' && (validationRun.liveStopped || project.runtime.failure || project.runtime.localFailure
+      if (project.mode === 'live' && (validationRun.liveStopped
+        || (project.runtime.failure && project.runtime.failure.kind !== 'qloo')
+        || (project.runtime.localFailure && project.runtime.localFailure.kind !== 'qloo')
         || ['error', 'aborted'].includes(context.message.stopReason))) return true;
       if (project.mode === 'live' && remainingBudget(project).modelHttpAttempts === 0) {
         const previous = project.runtime.feedback;
@@ -738,7 +743,9 @@ export async function createProductRuntime(project, { env = process.env, decide 
             { expandPromptTemplates: false, source: 'rpc' });
           await session.waitForIdle();
           if (!capacityRecovery.requested || capacityRecovery.used || validationRun.liveStopped
-            || project.runtime.failure || project.runtime.localFailure || remainingBudget(project).modelHttpAttempts === 0) break;
+            || (project.runtime.failure && project.runtime.failure.kind !== 'qloo')
+            || (project.runtime.localFailure && project.runtime.localFailure.kind !== 'qloo')
+            || remainingBudget(project).modelHttpAttempts === 0) break;
           capacityRecovery.used = true;
           const fromSessionId = session.sessionId;
           freshSession();

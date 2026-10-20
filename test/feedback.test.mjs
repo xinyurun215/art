@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { createProject, applyProposal } from '../app/state.mjs';
+import { createProject, applyProposal, selectConcept, beginRevision, proposeRevision } from '../app/state.mjs';
 import { createProductRuntime, recordEvidence } from '../app/runtime.mjs';
 import { budgetedFetch, safeRuntimeFailure, serverUsage, validationRun, withHttpBudget } from '../app/transport.mjs';
 
@@ -39,6 +39,7 @@ const concept = (project, index, links = []) => ({ id: `mock-concept-${index}`, 
 async function mockLive(project, modelReply, qlooReply) {
   const original = globalThis.fetch;
   let modelRequests = 0, qlooRequests = 0;
+  let modelReplyError;
   const modelFeedback = [];
   globalThis.fetch = budgetedFetch(async (url, options) => {
     const destination = new URL(String(url));
@@ -48,17 +49,22 @@ async function mockLive(project, modelReply, qlooReply) {
       for (const message of body.messages.filter(message => message.role === 'tool')) {
         try { const value = JSON.parse(message.content); if (value.feedback) modelFeedback.push(value.feedback); } catch {}
       }
-      return mockResponse(modelReply(body, modelRequests));
+      let reply;
+      try { reply = modelReply(body, modelRequests, runtime); }
+      catch (error) { modelReplyError = error; throw error; }
+      return reply instanceof Response ? reply : mockResponse(reply);
     }
     assert.equal(destination.origin, liveEnv.QLOO_API_URL, 'offline mock must not reach any other host');
     qlooRequests++;
     assert(qlooReply, 'unexpected mocked Qloo request');
-    return Response.json(qlooReply(destination));
+    const reply = qlooReply(destination);
+    return reply instanceof Response ? reply : Response.json(reply);
   });
   let runtime;
   try {
     runtime = await createProductRuntime(project, { env: liveEnv });
     await runtime.submit(brief.request);
+    if (modelReplyError) throw modelReplyError;
     return { modelRequests, qlooRequests, modelFeedback };
   } finally { if (runtime) await runtime.dispose(); globalThis.fetch = original; }
 }
@@ -141,6 +147,123 @@ test('mocked official session reads local Qloo budget exhaustion and never attri
   assert.equal(project.runtime.feedback.remainingBudget.modelHttpAttempts, 4, 'final state refreshes budget after the text-only closing model request');
   assert.equal(project.runtime.httpAttempts.filter(entry => entry.kind === 'qloo').length, 1);
   fixtures.push({ name: 'budget_exhausted', project: structuredClone(project), modelFeedback: result.modelFeedback.at(-1) });
+  reset();
+});
+
+test('mocked Qloo HTTP error reaches the model, blocks both query tools and permits only validated closing proposals', async () => {
+  for (const existingDraft of [false, true]) {
+    reset();
+    const project = createProject({ brief, mode: 'live' });
+    const entity = { entity_id: 'saved-description', properties: { description: '合成既有描述；不是受众或效果证据。' } };
+    const card = recordEvidence(project, 'describe', { entity: '合成参考' }, { correlationId: 'saved-no-network',
+      result: { status: 'ok', results: [entity] } });
+    const link = { evidenceId: card.id, entityId: entity.entity_id, observedField: 'properties.description',
+      observedValue: entity.properties.description, observation: '只引用已有精确描述。', inspiration: '组织方式为设计推断，效果未知。' };
+    const concepts = [concept(project, 0, [link]), concept(project, 1, [link])];
+    if (existingDraft) {
+      applyProposal(project, { ...proposalCall(project, { phase: 'ready', concepts }).arguments, projectId: project.id });
+      selectConcept(project, { conceptId: concepts[0].id, baseVersion: project.version });
+      const request = beginRevision(project, { conceptId: concepts[0].id, baseVersion: project.version, text: '保留正式内容，调整标题待审' });
+      proposeRevision(project, { requestId: request.id, phase: 'pending', summary: '既有待审稿',
+        changes: [{ field: 'title', after: '既有待审标题', reason: '设计师待审选择', evidenceRefs: [] }],
+        impact: ['仅标题'], unknowns: ['效果未知'] });
+    }
+    const before = structuredClone({ concepts: project.concepts, revisions: project.revisions, version: project.version });
+    const expectedRejection = existingDraft ? 'STALE_PROJECT_VERSION' : 'EVIDENCE_VALUE_MISMATCH';
+    const result = await mockLive(project, (body, turn) => {
+      const feedback = body.messages.filter(message => message.role === 'tool').map(message => JSON.parse(message.content).feedback);
+      if (turn === 1) return [{ type: 'toolCall', id: 'remote-error', name: 'qloo_recommend', arguments: { target_type: 'artist', signals: ['合成参考'], limit: 2 } }];
+      if (turn === 2) {
+        assert.equal(feedback.at(-1).code, 'QLOO_REMOTE_ERROR');
+        assert.equal(feedback.at(-1).remainingBudget.queryStopped, true);
+        assert.equal(feedback.at(-1).remainingBudget.qlooHttpAttempts, 0);
+        assert.equal(feedback.at(-1).remainingBudget.modelHttpAttempts, 5);
+        assert.deepEqual({ concepts: project.concepts, revisions: project.revisions, version: project.version }, before);
+        return [
+          { type: 'toolCall', id: 'blocked-describe', name: 'qloo_describe', arguments: { entity: '合成参考', type: 'artist' } },
+          { type: 'toolCall', id: 'blocked-recommend', name: 'qloo_recommend', arguments: { target_type: 'artist', signals: ['其他合成参考'], limit: 2 } },
+        ];
+      }
+      if (turn === 3) {
+        assert.deepEqual(feedback.slice(-2).map(value => value.code), ['QLOO_QUERY_STOPPED', 'QLOO_QUERY_STOPPED']);
+        const invalid = proposalCall(project, { phase: 'ready', concepts: structuredClone(concepts) });
+        if (existingDraft) invalid.arguments.baseVersion--;
+        else invalid.arguments.concepts[0].evidenceLinks[0].observedValue = 'fabricated';
+        return [invalid];
+      }
+      assert.equal(turn, 4, 'accepted closing proposal must terminate without another callback');
+      assert.equal(feedback.at(-1).code, expectedRejection);
+      assert.deepEqual({ concepts: project.concepts, revisions: project.revisions, version: project.version }, before);
+      return [proposalCall(project, { phase: existingDraft ? 'ready' : 'insufficient_evidence', concepts,
+        summary: '查询失败；仅保留既有描述的有限设计草案，受众与效果未知。' })];
+    }, () => Response.json({ error: { code: 'INVALID_PARAMETER', message: 'synthetic Qloo HTTP error' } }, { status: 400 }));
+    assert.equal(result.modelRequests, 4);
+    assert.equal(result.qlooRequests, 1, 'blocked describe/recommend never reach the mocked HTTP boundary');
+    assert.equal(project.usage.modelHttpAttempts, 4);
+    assert.equal(project.usage.qlooHttpAttempts, 1);
+    assert.equal(project.runtime.queryStopped, true);
+    assert.equal(validationRun.liveStopped, false);
+    assert.equal(project.runtime.failure.kind, 'qloo');
+    assert.equal(project.runtime.failure.status, 400);
+    assert.equal(project.runtime.feedback.code, 'PROPOSAL_ACCEPTED');
+    assert.deepEqual(project.revisions, before.revisions);
+    assert.deepEqual(project.concepts, existingDraft ? before.concepts : concepts);
+    assert.equal(project.version, existingDraft ? before.version : before.version + 1);
+  }
+  reset();
+});
+
+test('case and shared Qloo exhaustion still bound closing model requests by their original budgets', async () => {
+  for (const shared of [false, true]) {
+    reset();
+    const project = createProject({ brief, mode: 'live' });
+    if (shared) { serverUsage.qlooHttpAttempts = 12; serverUsage.modelHttpAttempts = 10; }
+    else project.usage.qlooHttpAttempts = 6;
+    const result = await mockLive(project, (body, turn) => {
+      if (turn === 1) return [{ type: 'toolCall', id: 'exhausted-query', name: 'qloo_describe', arguments: { entity: '合成参考', type: 'artist' } }];
+      const feedback = JSON.parse(body.messages.findLast(message => message.role === 'tool').content).feedback;
+      if (turn === 2) {
+        assert.equal(feedback.code, 'QLOO_HTTP_BUDGET_EXHAUSTED');
+        assert.equal(feedback.remainingBudget.queryStopped, true);
+        assert.equal(feedback.remainingBudget.qlooHttpAttempts, 0);
+        assert.equal(feedback.remainingBudget.sharedRemaining.qlooHttpAttempts, shared ? 0 : 12);
+      }
+      return [proposalCall(project, { phase: 'ready', concepts: [concept(project, 0), concept(project, 1)] }, `invalid-close-${turn}`)];
+    });
+    assert.equal(result.modelRequests, shared ? 2 : 6);
+    assert.equal(result.qlooRequests, 0);
+    assert.equal(project.runtime.feedback.code, 'EVIDENCE_INSUFFICIENT');
+    assert.equal(project.runtime.feedback.remainingBudget.modelHttpAttempts, 0);
+    assert.equal(project.version, 1);
+    assert.deepEqual(project.concepts, []);
+    assert.equal(serverUsage.modelHttpAttempts, shared ? 12 : 6);
+  }
+  reset();
+});
+
+test('global stop, session abort and unrecoverable model HTTP error never schedule a closing request', async () => {
+  for (const stop of ['global', 'abort', 'model_error']) {
+    reset();
+    const project = createProject({ brief, mode: 'live' });
+    const result = await mockLive(project, (_body, turn, runtime) => {
+      assert.equal(turn, 1, `${stop} must not request another model response`);
+      if (stop === 'model_error') return Response.json({ error: { code: 'invalid_api_key', message: 'synthetic model error' } }, { status: 401 });
+      runtime.session.subscribe(event => {
+        if (event.type !== 'tool_execution_end') return;
+        if (stop === 'global') validationRun.liveStopped = true;
+        else void runtime.session.abort();
+      });
+      return [{ type: 'toolCall', id: 'query-before-stop', name: 'qloo_describe', arguments: { entity: '合成参考', type: 'artist' } }];
+    }, () => Response.json({ error: { message: 'synthetic query failure before explicit stop' } }, { status: 400 }));
+    assert.equal(result.modelRequests, 1);
+    assert.equal(result.qlooRequests, stop === 'model_error' ? 0 : 1);
+    assert.equal(project.usage.modelHttpAttempts, 1);
+    assert.equal(project.version, 1);
+    if (stop === 'model_error') {
+      assert.equal(project.runtime.failure.kind, 'model');
+      assert.equal(project.runtime.failure.status, 401);
+    }
+  }
   reset();
 });
 
@@ -269,6 +392,7 @@ test('official executor wrapping cannot erase a source block after the last avai
       { entity_id: '11111111-1111-4111-8111-111111111111', name: '合成参考', type: 'urn:entity:artist' },
     ] }));
   assert.equal(result.qlooRequests, 1);
+  assert.equal(result.modelRequests, 2);
   assert.equal(project.usage.qlooHttpAttempts, 6);
   assert.equal(project.runtime.failure.code, 'QLOO_HTTP_BUDGET_EXHAUSTED');
   assert.equal(project.runtime.failure.status, null);

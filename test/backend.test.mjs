@@ -326,7 +326,7 @@ test('live project latches after returned or thrown official query errors and bl
     assert.equal(first.result.queryStopped, true);
     assert.equal(project.runtime.queryStopped, true);
     assert.equal(validationRun.queryStopped, true);
-    assert.equal(validationRun.liveStopped, true);
+    assert.equal(validationRun.liveStopped, false, 'a Qloo-only stop preserves bounded model closing requests');
     for (const operation of ['recommend', 'describe', 'recommend']) {
       const result = await executor.execute(operation, {}, { correlationId: 'blocked-next-call' });
       assert.equal(result.result.status, 'error');
