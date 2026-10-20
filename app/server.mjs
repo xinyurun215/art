@@ -7,6 +7,7 @@ import { createProject, action, configStatus, list, selectConcept, beginRevision
   finishRevisionRequest, decideRevision } from './state.mjs';
 import { createProductRuntime } from './runtime.mjs';
 import { createHttpBudget, validationRun, stopLiveRun, safeRuntimeFailure } from './transport.mjs';
+import { pendingReference, respondToReference, referenceQuestion } from './references.mjs';
 
 const publicRoot = fileURLToPath(new URL('../public', import.meta.url));
 const json = (response, status, body) => { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); response.end(JSON.stringify(body)); };
@@ -122,6 +123,17 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
           }
           if (project.mode === 'live' && validationRun.liveStopped)
             return json(response, 409, { error: '本轮真实验证已因错误停止；不能追加真实请求。' });
+          if (match[2] === 'messages' && (pendingReference(project) || input.referenceResolution)) {
+            if (!input.referenceResolution) {
+              referenceQuestion(project); saveProject(project);
+              return json(response, 409, { error: '请在当前候选中明确选择，或使用补充信息表单；文字回复不会默认选择任何实体。', code: 'REFERENCE_SELECTION_REQUIRED' });
+            }
+            const continuation = respondToReference(project, input.referenceResolution);
+            project.messages.push({ role: 'user', text: continuation ?? '取消实体选择；原文化参考尚未解决，等待补充信息。' });
+            saveProject(project);
+            if (continuation) schedule(project, continuation);
+            return json(response, continuation ? 202 : 200, { project });
+          }
           if (typeof input.text !== 'string' || !input.text.trim()) return json(response, 400, { error: '请输入补充说明' });
           const text = input.text.trim();
           if (match[2] === 'revisions' && match[4] === 'feedback') {

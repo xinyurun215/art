@@ -94,6 +94,14 @@ export function readProjectEvidence(project, { evidenceId, entityId: requestedEn
 }
 
 export function qlooResultView(result, project, expanded = true) {
+  if (result.referenceResolution && Array.isArray(result.resolution?.issues)) {
+    const remaining = result.resolution.issues.filter(issue => !result.referenceResolution.records.some(record =>
+      record.input === issue.input || record.originalInput === issue.input));
+    if (remaining.length !== result.resolution.issues.length) {
+      const { resolution, ...view } = result;
+      return qlooResultView({ ...view, ...(remaining.length ? { resolution: { ...resolution, issues: remaining } } : {}) }, project, expanded);
+    }
+  }
   const card = project.evidence.find(card => card.id === result.artEvidence?.id && card.projectId === project.id);
   if (card) {
     const view = evidenceView(card, expanded);
@@ -131,7 +139,7 @@ export function unresolvedResearch(messages, previous = []) {
     if (!result) try { result = JSON.parse(item.content.filter(block => block.type === 'text').map(block => block.text).join('')); } catch { continue; }
     const call = calls.get(item.toolCallId);
     const key = serialized({ name: item.toolName, id: item.toolCallId });
-    if (result.status === 'needs_input') unresolved.set(key, { tool: item.toolName, observationId: item.toolCallId,
+    if (result.status === 'needs_input' && (!result.referenceResolution || qlooResultView(result, { evidence: [] }).resolution)) unresolved.set(key, { tool: item.toolName, observationId: item.toolCallId,
       input: serialized(call?.arguments).length <= PREVIEW_CHARACTERS ? structuredClone(call?.arguments) : fieldView(call?.arguments),
       status: 'needs_input', confirmed: false, note: 'Historical unresolved workflow observation; later query success does not establish user confirmation.',
       result: qlooResultView(result, { evidence: [] }) });

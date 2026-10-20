@@ -13,6 +13,7 @@ import { applyProposal, proposeRevision, pendingRevisionDraft, finishRevisionReq
 import { withHttpBudget, withoutNetwork, validationRun, stopLiveRun, safeRuntimeFailure,
   remainingBudget, toolFeedback, recordLocalFailure, modelOutputLimit } from './transport.mjs';
 import { evidenceView, readProjectEvidence, qlooResultView, compactToolMessages, unresolvedResearch, assembleContext, requestBudget } from './context.mjs';
+import { pendingReference, referenceQuestion, observeReferenceResolution, bindReferenceInputs, referenceResolutionView } from './references.mjs';
 
 const fixture = JSON.parse(readFileSync(new URL('../fixtures/culture-signals.json', import.meta.url)));
 export const TOOL_NAMES = Object.freeze(['qloo_describe', 'qloo_recommend', 'propose_design_response', 'read_project_evidence']);
@@ -43,6 +44,7 @@ const snapshotProject = project => {
   const evidence = (target && linked.length ? linked : relevant).map(card => evidenceView(card, project.mode === 'offline'));
   return structuredClone({ id: project.id, version: project.version,
   brief: project.brief, evidence, concepts: project.concepts,
+  referenceResolution: referenceResolutionView(project),
   questions: project.questions, status: project.status, selectedConceptId: project.selectedConceptId,
   lockedFields: project.lockedFields ?? [], revisionRequest: project.revisionRequest,
   ...(priorFeedback ? { priorFeedback: { text: priorFeedback.text, status: priorFeedback.status } } : {}),
@@ -355,6 +357,13 @@ function stoppedExecution(project, executor, operation, context) {
 // execute call can return its error to the model, but cannot open another query.
 export function wrapProjectExecutor(project, officialExecutor, env = process.env) {
   return { ...officialExecutor, async execute(operation, input, context) {
+    const blocked = reason => ({ operation, transport: officialExecutor.transport, correlationId: context?.correlationId ?? randomUUID(), durationMs: 0,
+      result: { schema_version: '1.0-preview.1', operation, status: 'needs_input', results: [],
+        summary: reason, feedback: toolFeedback(project, 'REFERENCE_CONFIRMATION_REQUIRED', '/signals', reason, true) } });
+    if (operation === 'recommend' && pendingReference(project))
+      return blocked('输入文化参考尚未解决；推荐已在执行边界暂停，请先选择实际候选或补充信息。');
+    try { input = bindReferenceInputs(project, operation, input); }
+    catch (error) { const execution = blocked(error.message); execution.result.feedback.code = error.code; return execution; }
     if (project.mode === 'live' && (project.runtime.queryStopped || validationRun.queryStopped))
       return stoppedExecution(project, officialExecutor, operation, context);
     if (project.mode === 'live' && remainingBudget(project).qlooHttpAttempts === 0) {
@@ -369,6 +378,15 @@ export function wrapProjectExecutor(project, officialExecutor, env = process.env
       execution = project.mode === 'offline' ? await withoutNetwork(project, () => officialExecutor.execute(operation, input, context))
         : await withHttpBudget(project, 'qloo', env.QLOO_API_URL, () => officialExecutor.execute(operation, input, context));
       if (!execution?.result || typeof execution.result.status !== 'string') throw new Error('官方查询返回格式无效');
+      const resolvedInput = observeReferenceResolution(project, operation, input, execution.result);
+      if (resolvedInput && !pendingReference(project)) {
+        input = resolvedInput;
+        execution = project.mode === 'offline' ? await withoutNetwork(project, () => officialExecutor.execute(operation, input, context))
+          : await withHttpBudget(project, 'qloo', env.QLOO_API_URL, () => officialExecutor.execute(operation, input, context));
+        if (!execution?.result || typeof execution.result.status !== 'string') throw new Error('官方查询返回格式无效');
+      }
+      if (project.referenceResolutions?.length) execution = { ...execution,
+        result: { ...execution.result, referenceResolution: referenceResolutionView(project) } };
     } catch (error) {
       action(project, 'query', '文化研究查询未完成', project.mode === 'offline' ? '离线夹具执行错误' : '官方查询失败；本轮所有真实查询已停止', 'error');
       if (project.mode === 'live') {
@@ -416,7 +434,7 @@ export function wrapProjectExecutor(project, officialExecutor, env = process.env
   } };
 }
 
-export async function createProductRuntime(project, { env = process.env, decide = offlineDecision, diagnostic } = {}) {
+export async function createProductRuntime(project, { env = process.env, decide = offlineDecision, diagnostic, qlooExecutor } = {}) {
   if (diagnostic && typeof diagnostic.fetch !== 'function') throw new Error('诊断必须提供独立的一次请求边界');
   const diagnosticState = diagnostic ? { modelCallbacks: 0, blockedModelCallbacks: 0, pausedToolNames: [], toolExecutionAttempts: 0 } : undefined;
   const root = resolve(new URL('..', import.meta.url).pathname.replace(/^\/(\w:)/, '$1'));
@@ -484,7 +502,8 @@ export async function createProductRuntime(project, { env = process.env, decide 
     models: [{ id: modelId, name: project.mode === 'offline' ? '离线合成设计模型' : modelId,
       reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 32000, maxTokens: 12000 }] });
   let officialExecutor;
-  if (project.mode === 'offline') {
+  if (qlooExecutor) officialExecutor = qlooExecutor;
+  else if (project.mode === 'offline') {
     officialExecutor = createDelegatingQlooWorkflowExecutor({ transport: { kind: 'direct', name: 'local-synthetic-fixture', remote: false },
       async invoke(operation) {
         if (project.scenario === 'failure') return { schema_version: '1.0-preview.1', operation, status: 'error',
@@ -663,6 +682,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
     };
     session.agent.shouldStopAfterTurn = async (context, signal) => {
       if (await originalShouldStop?.(context, signal)) return true;
+      if (pendingReference(project)) { referenceQuestion(project); return true; }
       if (context.toolResults.some(result => result.details?.accepted === true || result.details?.completed === true)) return true;
       if (project.mode === 'live' && (validationRun.liveStopped
         || (project.runtime.failure && project.runtime.failure.kind !== 'qloo')

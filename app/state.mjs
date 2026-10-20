@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { requireResolvedReferences } from './references.mjs';
 
 export const LIMITS = Object.freeze({ modelHttpAttempts: 6, qlooHttpAttempts: 6 });
 export const SERVER_LIMITS = Object.freeze({ modelHttpAttempts: 12, qlooHttpAttempts: 12 });
@@ -35,6 +36,7 @@ function nonempty(value) { return typeof value === 'string' && value.trim().leng
 
 // This checks structure and literal constraints, not originality or design quality.
 export function validateProposal(project, proposal) {
+  requireResolvedReferences(project);
   ensure(proposal.projectId === project.id, '项目不匹配：禁止跨项目写入', '/projectId', 'PROJECT_MISMATCH');
   ensure(proposal.baseVersion === project.version, '基础版本已过期，请基于当前项目重新提出方案', '/baseVersion', 'STALE_PROJECT_VERSION');
   ensure(['needs_input', 'ready', 'insufficient_evidence'].includes(proposal.phase), '无效的提案状态', '/phase');

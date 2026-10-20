@@ -187,8 +187,14 @@
   }
 
   function renderQuestions(project) {
+    const reference = list(project.referenceResolutions).find(record => ['pending', 'needs_details'].includes(record.status));
     const questions = list(project.questions);
     const panel = $('questions-panel');
+    if (reference) {
+      panel.hidden = false;
+      panel.innerHTML = `<h3 id="questions-heading">确认输入文化参考</h3><p>${esc(reference.originalInput)}</p><p>${reference.synthetic ? '以下是明确模拟返回，用于离线流程验收。' : '以下名称与区分字段来自实际工作流返回。'}尚未写入用户确认。</p>${reference.candidates.map(candidate => `<article class="reference-candidate"><h4>${esc(candidate.name)}</h4><p>类型：${display(candidate.type)} · 年份：${display(candidate.release_year)}</p>${candidate.description ? `<p>${esc(candidate.description)}</p>` : ''}<p class="entity-id">${esc(candidate.id)}</p><details><summary>查看实际候选字段</summary><pre class="raw-record">${esc(asText(candidate))}</pre></details><button type="button" data-reference-choice="${esc(candidate.id)}" ${isBusy() ? 'disabled' : ''}>选择此实体</button></article>`).join('')}<p>${reference.status === 'needs_details' ? '参考尚未解决，请补充名称、类型、年份或创作者。' : '只有明确选择当前候选才会写入用户确认。'}推荐与最终设计在此期间暂停。</p>${reference.status === 'pending' ? '<button type="button" data-reference-cancel>取消选择，补充信息</button>' : ''}<form id="reference-details-form"><label for="reference-details">补充或更正这个参考</label><textarea id="reference-details" rows="2" required></textarea><button type="submit">补充并重新核实</button></form>`;
+      return;
+    }
     panel.hidden = questions.length === 0;
     panel.innerHTML = questions.length ? `<h3 id="questions-heading">下一步需要确认</h3><ul>${questions.map((question) => `<li>${esc(typeof question === 'string' ? question : question.text)}</li>`).join('')}</ul><p>在左侧对话补充答案；智能体会继续当前项目。</p>` : '';
   }
@@ -472,6 +478,23 @@
     $('mode').value = 'offline';
     updateMode();
     $('request').focus();
+  });
+  $('questions-panel').addEventListener('click', event => {
+    const button = event.target.closest('[data-reference-choice], [data-reference-cancel]');
+    const record = list(state.project?.referenceResolutions).find(record => ['pending', 'needs_details'].includes(record.status));
+    if (!button || !record || button.disabled) return;
+    projectAction('/messages', { referenceResolution: { resolutionId: record.id, baseVersion: state.project.version,
+      action: button.hasAttribute('data-reference-cancel') ? 'cancel' : 'confirm',
+      ...(button.dataset.referenceChoice ? { selectedId: button.dataset.referenceChoice } : {}) } }, '实体选择未被接收');
+  });
+  $('questions-panel').addEventListener('submit', event => {
+    if (event.target.id !== 'reference-details-form') return;
+    event.preventDefault();
+    const record = list(state.project?.referenceResolutions).find(record => ['pending', 'needs_details'].includes(record.status));
+    const text = $('reference-details').value.trim();
+    if (!record || !text) return;
+    projectAction('/messages', { referenceResolution: { resolutionId: record.id, baseVersion: state.project.version,
+      action: 'clarify', text } }, '补充信息未被接收');
   });
   $('load-ambiguous').addEventListener('click', () => {
     fillBrief({ ...demo, request: '合成验收任务：为虚构运动鞋品牌「未定式」设计快闪。希望保留试穿，用音乐和电影作为研究线索。城市与场地还没想好，请先确认会影响方案的条件。', venue: '', budget: '' });
