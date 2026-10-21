@@ -12,10 +12,10 @@ export function createProject({ brief = {}, mode = 'offline', scenario = 'suffic
   if (!text(brief.request)) throw new Error('请先描述项目需求');
   return {
     id: randomUUID(), version: 1, mode, scenario,
-    brief: { request: text(brief.request), brand: text(brief.brand), goal: text(brief.goal),
+    brief: { request: brief.request, brand: text(brief.brand), goal: text(brief.goal),
       references: list(brief.references), venue: text(brief.venue), budget: text(brief.budget),
       mustKeep: list(brief.mustKeep), avoid: list(brief.avoid) },
-    messages: [{ role: 'user', text: text(brief.request) }], actions: [], questions: [], evidence: [], concepts: [],
+    messages: [{ role: 'user', text: brief.request }], actions: [], questions: [], clarifications: [], evidence: [], concepts: [],
     selectedConceptId: null, revisions: [], versionHistory: [], revisionRequest: null,
     status: { phase: 'busy', detail: '正在建立官方智能体会话' },
     usage: { modelCalls: 0, modelHttpAttempts: 0, qlooHttpAttempts: 0, toolCalls: 0 },
@@ -26,6 +26,39 @@ export function createProject({ brief = {}, mode = 'offline', scenario = 'suffic
 export function action(project, type, label, detail, status = 'done') {
   const record = { id: randomUUID(), type, label, detail, status, time: new Date().toISOString() };
   project.actions.push(record);
+  return record;
+}
+
+export function answerClarification(project, input) {
+  const question = project.questions[0], binding = input.clarification;
+  revisionEnsure(exactKeys(input, ['text', 'clarification', 'briefUpdate']) && nonempty(input.text)
+    && exactKeys(binding, ['questionId', 'baseVersion', 'reviseRequest'])
+    && (binding.reviseRequest === undefined || typeof binding.reviseRequest === 'boolean'),
+  '回答须关联当前问题与项目版本', '/clarification', 'CLARIFICATION_INVALID');
+  revisionEnsure(project.status.phase === 'needs_input' && project.questions.length === 1
+    && binding.questionId === question?.id && binding.baseVersion === project.version,
+  '问题或基础版本已过期；请刷新后回答当前问题', '/clarification', 'STALE_PROJECT_VERSION');
+  revisionEnsure(!binding.reviseRequest || question.field === 'request', '仅原需求问题可明确补充需求修改', '/clarification');
+  const field = input.briefUpdate?.field ?? question.field, before = project.brief[field];
+  const arrayField = ['references', 'mustKeep', 'avoid'].includes(field);
+  let update;
+  if (input.briefUpdate !== undefined) {
+    const value = input.briefUpdate;
+    revisionEnsure(exactKeys(value, ['field', 'value']) && (question.field === 'request'
+      ? binding.reviseRequest === true && ['venue', 'budget', 'mustKeep', 'avoid'].includes(field) : field === question.field) && field !== 'request'
+      && (arrayField ? Array.isArray(value.value) && value.value.every(nonempty) : typeof value.value === 'string'),
+    '明确修改须提供当前问题字段的完整有效值；原需求不能覆盖', '/briefUpdate', 'CLARIFICATION_INVALID');
+    update = { field, before: structuredClone(before), after: arrayField ? list(value.value) : value.value.trim(), explicit: true };
+  } else if (field !== 'request' && (arrayField ? before.length === 0 : !before)) {
+    update = { field, before: structuredClone(before), after: arrayField ? list(input.text) : input.text.trim(), explicit: false };
+  }
+  const record = { questionId: question.id, baseVersion: project.version, answeredVersion: project.version + 1,
+    field: question.field, question: question.text, answer: input.text,
+    ...(binding.reviseRequest ? { revisesRequest: true } : {}), ...(update ? { briefUpdate: update } : {}) };
+  if (update) project.brief[field] = structuredClone(update.after);
+  (project.clarifications ??= []).push(record);
+  project.questions = [];
+  project.version++;
   return record;
 }
 

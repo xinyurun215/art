@@ -4,6 +4,24 @@ const EXACT_FIELD_CHARACTERS = 6000;
 const forbidden = new Set(['__proto__', 'prototype', 'constructor']);
 const entityId = entity => entity.id ?? entity.entity_id;
 const serialized = value => JSON.stringify(value) ?? '';
+
+export function clarificationView(project) {
+  const records = project.clarifications ?? [];
+  // Request text and answers not materialized in a brief update may add
+  // independent conditions. A newer answer does not silently supersede them.
+  const independent = records.filter(record => record.field === 'request' || !record.briefUpdate);
+  const latest = new Map(), updates = new Map();
+  for (const record of records) {
+    latest.set(record.field, record);
+    if (record.briefUpdate?.explicit) updates.set(record.briefUpdate.field, record);
+  }
+  const selected = new Set([...records.slice(-12), ...latest.values(), ...updates.values(), ...independent.slice(-12)]);
+  const included = records.filter(record => selected.has(record));
+  return { records: included.map(({ questionId, field, question, answer, revisesRequest, briefUpdate }) => ({
+    questionId, field, question, answer, ...(revisesRequest ? { revisesRequest } : {}), ...(briefUpdate ? { briefUpdate } : {}) })),
+    total: records.length, omitted: records.length - included.length, independentLimitExceeded: independent.length > 12 };
+}
+
 function boundedMetadata(value, depth = 0) {
   if (typeof value === 'string') return value.length <= PREVIEW_CHARACTERS ? value : fieldView(value);
   if (!value || typeof value !== 'object') return value;

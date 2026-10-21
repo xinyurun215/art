@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createProject, action, configStatus, list, selectConcept, beginRevision, beginPendingFeedback,
+import { createProject, action, configStatus, answerClarification, selectConcept, beginRevision, beginPendingFeedback,
   finishRevisionRequest, decideRevision } from './state.mjs';
 import { createProductRuntime } from './runtime.mjs';
 import { createHttpBudget, validationRun, stopLiveRun, safeRuntimeFailure } from './transport.mjs';
@@ -150,14 +150,9 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
             schedule(project, text);
             return json(response, 202, { project });
           }
-          project.messages.push({ role: 'user', text });
-          if (project.status.phase === 'needs_input' && project.questions.length === 1) {
-            const field = project.questions[0].field;
-            project.brief[field] = ['references', 'mustKeep', 'avoid'].includes(field) ? list(text) : text;
-            project.questions = [];
-            project.version++;
-          }
-          schedule(project, text);
+          if (project.status.phase === 'needs_input' || input.clarification || input.briefUpdate) answerClarification(project, input);
+          project.messages.push({ role: 'user', text: input.text });
+          schedule(project, input.text);
           return json(response, 202, { project });
         }
       }

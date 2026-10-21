@@ -196,7 +196,11 @@
       return;
     }
     panel.hidden = questions.length === 0;
-    panel.innerHTML = questions.length ? `<h3 id="questions-heading">下一步需要确认</h3><ul>${questions.map((question) => `<li>${esc(typeof question === 'string' ? question : question.text)}</li>`).join('')}</ul><p>在左侧对话补充答案；智能体会继续当前项目。</p>` : '';
+    const question = questions[0];
+    const fieldLabel = { request: '原需求', brand: '品牌', goal: '目标', references: '文化参考', venue: '城市与场地', budget: '预算', mustKeep: '必须保留项', avoid: '禁止项' }[question?.field];
+    const value = project.brief?.[question?.field];
+    const targets = question?.field === 'request' ? '<label for="clarification-update-field">明确修改哪项条件</label><select id="clarification-update-field"><option value="request">原需求文字补充或修订</option><option value="venue">城市与场地</option><option value="budget">预算</option><option value="mustKeep">必须保留项</option><option value="avoid">禁止项</option></select>' : '';
+    panel.innerHTML = questions.length ? `<h3 id="questions-heading">下一步需要确认</h3><ul>${questions.map((question) => `<li>${esc(typeof question === 'string' ? question : question.text)}</li>`).join('')}</ul><p>在左侧对话补充答案；原始需求与已有条件会保留。</p>${fieldLabel ? `<details><summary>本次回答包含明确修改</summary><label><input id="clarification-revise" type="checkbox">${question.field === 'request' ? '将本次答案记录为对原需求的明确修改；保留原文及未提及的条件' : `明确更新${fieldLabel}，使用下方完整值替换当前值`}</label>${targets}<label id="clarification-value-label" for="clarification-value"${targets ? ' hidden' : ''}>修改后的${fieldLabel}${Array.isArray(value) ? '（每行一项；清空表示明确取消这些条目）' : ''}</label><textarea id="clarification-value" rows="3"${targets ? ' hidden' : ''}>${targets ? '' : esc(Array.isArray(value) ? value.join('\n') : value)}</textarea></details>` : ''}` : '';
   }
 
   function entityMarkup(entity, showFields = false) {
@@ -496,6 +500,13 @@
     projectAction('/messages', { referenceResolution: { resolutionId: record.id, baseVersion: state.project.version,
       action: 'clarify', text } }, '补充信息未被接收');
   });
+  $('questions-panel').addEventListener('change', event => {
+    if (event.target.id !== 'clarification-update-field') return;
+    const field = event.target.value, value = state.project.brief[field];
+    $('clarification-value').hidden = $('clarification-value-label').hidden = field === 'request';
+    $('clarification-value').value = Array.isArray(value) ? value.join('\n') : value;
+    $('clarification-value-label').textContent = `修改后的${event.target.selectedOptions[0].textContent}${Array.isArray(value) ? '（每行一项；清空表示明确取消这些条目）' : ''}`;
+  });
   $('load-ambiguous').addEventListener('click', () => {
     fillBrief({ ...demo, request: '合成验收任务：为虚构运动鞋品牌「未定式」设计快闪。希望保留试穿，用音乐和电影作为研究线索。城市与场地还没想好，请先确认会影响方案的条件。', venue: '', budget: '' });
     $('mode').value = 'offline';
@@ -576,8 +587,8 @@
   $('brief-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     if (isBusy()) return;
-    const brief = Object.fromEntries(briefFields.map((field) => [field, $(field).value.trim()]));
-    if (!brief.request) { $('request').focus(); return; }
+    const brief = Object.fromEntries(briefFields.map((field) => [field, field === 'request' ? $(field).value : $(field).value.trim()]));
+    if (!brief.request.trim()) { $('request').focus(); return; }
     state.pending = true;
     updateControls();
     showError('');
@@ -595,11 +606,24 @@
   });
   $('message-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    const text = $('message').value.trim();
-    if (!text || !state.project || isBusy() || pendingRevision(state.project)) return;
+    const text = $('message').value;
+    if (!text.trim() || !state.project || isBusy() || pendingRevision(state.project)) return;
     const selected = state.project.selectedConceptId;
     if (list(state.project.concepts).length && !selected) return;
     const payload = selected ? { text, conceptId: selected, baseVersion: state.project.version } : { text };
+    const question = state.project.status.phase === 'needs_input' && state.project.questions?.length === 1 ? state.project.questions[0] : null;
+    if (!selected && question && !list(state.project.referenceResolutions).some(record => ['pending', 'needs_details'].includes(record.status))) {
+      payload.clarification = { questionId: question.id, baseVersion: state.project.version };
+      if ($('clarification-revise')?.checked) {
+        if (question.field === 'request') payload.clarification.reviseRequest = true;
+        const field = question.field === 'request' ? $('clarification-update-field').value : question.field;
+        if (field !== 'request') {
+          const value = $('clarification-value').value;
+          payload.briefUpdate = { field, value: ['references', 'mustKeep', 'avoid'].includes(field)
+            ? value.split(/[\n,，;；]/).map(item => item.trim()).filter(Boolean) : value.trim() };
+        }
+      }
+    }
     if (selected && state.project.mode === 'offline' && $('offline-revision-fixture').value) payload.offlineFixture = $('offline-revision-fixture').value;
     projectAction(selected ? '/revisions' : '/messages', payload, '回复未发送', () => { $('message').value = ''; });
   });

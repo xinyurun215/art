@@ -275,7 +275,8 @@ test('HTTP API returns authoritative state, continues same project/session and k
     assert.equal(created.status, 202);
     const first = await settled(port, created.body.project.id);
     assert.equal(first.status.phase, 'needs_input');
-    const continued = await localRequest(port, 'POST', `/api/projects/${first.id}/messages`, { text: brief.venue });
+    const continued = await localRequest(port, 'POST', `/api/projects/${first.id}/messages`, { text: brief.venue,
+      clarification: { questionId: first.questions[0].id, baseVersion: first.version } });
     assert.equal(continued.status, 202);
     const final = await settled(port, first.id);
     assert.equal(final.id, first.id);
