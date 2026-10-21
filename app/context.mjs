@@ -165,6 +165,59 @@ export function unresolvedResearch(messages, previous = []) {
   return [...unresolved.values()];
 }
 
+function evidenceReads(messages, snapshot, userIndex, recent) {
+  let origin;
+  try {
+    const content = messages[userIndex]?.content;
+    origin = JSON.parse(typeof content === 'string' ? content : content.filter(block => block.type === 'text').map(block => block.text).join('')).project;
+  } catch { return; }
+  if (!snapshot.id || origin?.id !== snapshot.id || origin.version !== snapshot.version) return;
+  const history = messages.slice(userIndex + 1), counts = new Map(), reads = new Map();
+  for (const item of history) if (item.role === 'assistant') for (const call of item.content ?? [])
+    if (call.type === 'toolCall') counts.set(call.id, (counts.get(call.id) ?? 0) + 1);
+  for (let index = 0; index < history.length; index++) {
+    const item = history[index];
+    if (item.role !== 'assistant') continue;
+    const calls = (item.content ?? []).filter(block => block.type === 'toolCall');
+    let end = index + 1;
+    while (end < history.length && history[end].role !== 'assistant') end++;
+    const results = history.slice(index + 1, end).filter(message => message.role === 'toolResult');
+    if (results.length !== calls.length || !calls.every(call => counts.get(call.id) === 1
+      && results.filter(result => result.toolCallId === call.id && result.toolName === call.name).length === 1)) continue;
+    for (const call of calls.filter(call => call.name === 'read_project_evidence')) {
+      const args = call.arguments ?? {}, parts = typeof args.field === 'string' ? args.field.split('.') : [];
+      const card = snapshot.evidence?.find(card => card.id === args.evidenceId && card.projectId === snapshot.id);
+      if (!card || !parts.length || args.field.length > 256
+        || !parts.every(part => /^[A-Za-z0-9_-]+$/.test(part) && !forbidden.has(part))) continue;
+      const entity = card.returnedEntities?.find(entity => entityId(entity) === args.entityId);
+      if (args.entityId === undefined ? parts[0] !== 'query' : !entity
+        || !(entity.availableFields ?? Object.keys(entity)).includes(parts[0])
+        || parts[0] === 'properties' && parts.length > 1 && !(entity.propertyFields ?? Object.keys(entity.properties ?? {})).includes(parts[1])) continue;
+      const key = serialized([args.evidenceId, args.entityId, args.field]);
+      reads.delete(key);
+      const result = results.find(result => result.toolCallId === call.id);
+      let value;
+      try { value = JSON.parse(result.content.filter(block => block.type === 'text').map(block => block.text).join('')); }
+      catch { continue; }
+      if (result.isError || value.status !== 'ok' || value.exact !== true || !Object.hasOwn(value, 'value')
+        || value.evidenceId !== args.evidenceId || value.entityId !== args.entityId || value.field !== args.field
+        || serialized(value.value).length > EXACT_FIELD_CHARACTERS) continue;
+      reads.set(key, { evidenceId: args.evidenceId, ...(args.entityId === undefined ? {} : { entityId: args.entityId }),
+        field: args.field, value: structuredClone(value.value), sourceCallId: call.id });
+    }
+  }
+  const current = new Set(recent.flatMap(item => item.role === 'toolResult' ? [item.toolCallId] : []));
+  const pending = [...reads.values()].filter(read => !current.has(read.sourceCallId));
+  // ponytail: one submission, newest exact fields first; no unbounded history replay.
+  const entries = [];
+  for (const read of pending.toReversed()) {
+    const candidate = [read, ...entries];
+    if (candidate.length <= 12 && serialized({ entries: candidate, omitted: pending.length - candidate.length }).length <= 4096)
+      entries.unshift(read);
+  }
+  if (pending.length) return { entries, omitted: pending.length - entries.length };
+}
+
 export function assembleContext(messages, snapshot, message, priorResearch = []) {
   const user = messages.findLast(item => item.role === 'user');
   if (message === undefined && user) {
@@ -192,6 +245,8 @@ export function assembleContext(messages, snapshot, message, priorResearch = [])
   } else if (messages.slice(messages.findLastIndex(item => item.role === 'user') + 1).some(item => item.role === 'toolResult')) {
     throw Object.assign(new Error('当前工具结果没有对应调用；保留会话并停止模型请求。'), { code: 'MODEL_CONTEXT_PROTOCOL_INCOMPLETE' });
   }
+  const reads = evidenceReads(messages, snapshot, messages.findLastIndex(item => item.role === 'user'), recent);
+  if (reads) snapshot = { ...snapshot, evidenceReads: reads };
   return [{ ...(user ?? { role: 'user', timestamp: Date.now() }), content: [{ type: 'text', text: serialized({ project: snapshot, message }) }] }, ...recent];
 }
 
