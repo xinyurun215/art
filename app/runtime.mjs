@@ -455,6 +455,9 @@ export async function createProductRuntime(project, { env = process.env, decide 
   }
   const provider = project.mode === 'offline' ? `offline-${project.id}` : env.ART_MODEL_PROVIDER;
   const modelId = project.mode === 'offline' ? 'synthetic-design-fixture' : env.ART_MODEL_ID;
+  // One app budget for both SDK output clamping and local request checks.
+  const officialFlash = project.mode === 'live' && modelId === 'deepseek-flash' && env.ART_MODEL_API === 'openai-completions'
+    && URL.canParse(env.ART_MODEL_BASE_URL) && new URL(env.ART_MODEL_BASE_URL).origin === 'https://api.deepseek.com';
   modelRuntime.registerProvider(provider, { api: project.mode === 'offline' ? 'art-offline-fixture' : env.ART_MODEL_API,
     baseUrl: project.mode === 'offline' ? 'https://offline.invalid' : env.ART_MODEL_BASE_URL,
     apiKey: project.mode === 'offline' ? 'synthetic-local-only' : env.ART_MODEL_API_KEY,
@@ -509,7 +512,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
         [env.ART_MODEL_API_KEY, env.QLOO_API_KEY]);
     },
     models: [{ id: modelId, name: project.mode === 'offline' ? '离线合成设计模型' : modelId,
-      reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 32000, maxTokens: 12000 }] });
+      reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: officialFlash ? 65536 : 32000, maxTokens: 12000 }] });
   let officialExecutor;
   if (qlooExecutor) officialExecutor = qlooExecutor;
   else if (project.mode === 'offline') {

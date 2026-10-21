@@ -80,7 +80,7 @@ test('two live submissions use separate persisted sessions with the configured o
     const attempts = project.runtime.httpAttempts.filter(attempt => attempt.kind === 'model').slice(-2);
     assert.equal(attempts.length, 2);
     assert(attempts.every(attempt => attempt.generationBudget.model === 'deepseek-flash'
-      && attempt.generationBudget.contextWindow === 32000
+      && attempt.generationBudget.contextWindow === 65536
       && attempt.generationBudget.estimatedInputTokens > 0
       && attempt.generationBudget.safetyTokens === 4096
       && attempt.generationBudget.reservedOutputTokens === 12000
@@ -363,7 +363,7 @@ test('proactive context accepts a contract correction in the same official sessi
     assert.equal(project.runtime.failure, undefined);
     assert.equal(validationRun.liveStopped, false);
     assert.equal(project.runtime.generationBudget.estimateMethod, 'offline-serialized-ascii4-other1');
-    assert(project.runtime.generationBudget.estimatedInputTokens + 12000 + 4096 <= 32000);
+    assert(project.runtime.generationBudget.estimatedInputTokens + 12000 + 4096 <= 65536);
   }
 });
 
@@ -444,7 +444,7 @@ test('revision thinking override preserves payload hooks and the final output-ca
         assert.equal(bodies.length, 0);
         assert.equal(project.runtime.failure?.code, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT');
         assert.equal(project.runtime.generationBudget.finalMaxTokens, kind === 'reduced-output' ? 11999 : 12000);
-        if (kind === 'oversized-wrapper') assert(project.runtime.generationBudget.components.wrappers > 32000);
+        if (kind === 'oversized-wrapper') assert(project.runtime.generationBudget.components.wrappers > 65536);
       } else {
         assert.equal(bodies.length, 1);
         assert.deepEqual(bodies[0].thinking, { type: 'disabled' });
@@ -658,7 +658,7 @@ test('length finish without text or tool is a distinct failure and retains both 
 
 test('insufficient context capacity stops locally before the provider fetch', async t => {
   const { project } = replay(t);
-  project.brief.request = 'synthetic-oversized-brief-'.repeat(7000);
+  project.brief.request = 'synthetic-oversized-brief-'.repeat(10000);
   const confirmed = structuredClone(project.concepts);
   const pending = structuredClone(project.revisions);
   const { bodies, guarded } = mockTransport();
