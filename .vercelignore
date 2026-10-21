@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.vercel.example
+.art-runtime/
+validation/
+test/
+docs/VALIDATION.md
+.git/

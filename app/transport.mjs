@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { LIMITS, SERVER_LIMITS } from './state.mjs';
@@ -160,13 +160,19 @@ function projectLimits(project) {
     ? { modelHttpAttempts: Math.min(boundLimits?.modelHttpAttempts ?? validation.modelHttpLimit, validation.modelHttpLimit), qlooHttpAttempts: 0 } : limits;
 }
 
+export function bindDatabaseBudget(project, store, token, signal, usage = {}) {
+  const budget = { limits: store.limits, sharedLimits: store.sharedLimits, store, token, signal, usage, failedKinds: new Set() };
+  projectBudgets.set(project, { budget, entry: { limits: store.limits } });
+}
+
 export function remainingBudget(project) {
   const limits = projectLimits(project);
   const sharedLimits = projectBudgets.get(project)?.budget.sharedLimits ?? SERVER_LIMITS;
   const caseRemaining = {}, sharedRemaining = {};
   for (const key of Object.keys(LIMITS)) {
     caseRemaining[key] = Math.max(0, limits[key] - project.usage[key]);
-    sharedRemaining[key] = Math.max(0, sharedLimits[key] - serverUsage[key]);
+    sharedRemaining[key] = Math.max(0, sharedLimits[key] - (projectBudgets.get(project)?.budget.store
+      ? projectBudgets.get(project).budget.usage[key] ?? 0 : serverUsage[key]));
   }
   const queryStopped = Boolean(project.runtime.queryStopped || (project.mode === 'live' && validationRun.queryStopped));
   return { modelHttpAttempts: Math.min(caseRemaining.modelHttpAttempts, sharedRemaining.modelHttpAttempts),
@@ -316,7 +322,7 @@ export function stopLiveRun(project, failure, stopQueries = false) {
   if (stopQueries) validationRun.queryStopped = true;
   else validationRun.liveStopped = true;
   validationRun.failure ??= failure;
-  projectBudgets.get(project)?.budget.persist();
+  projectBudgets.get(project)?.budget.persist?.();
 }
 
 // Only fixed summaries, observed status, and bounded whitelisted provider fields
@@ -359,10 +365,33 @@ export function budgetedFetch(implementation = originalFetch) {
     if (kind === 'qloo' && (project.runtime.queryStopped || validationRun.queryStopped))
       throw recordLocalFailure(project, kind, 'QLOO_QUERY_STOPPED', '本轮真实查询已经停止');
     const binding = projectBudgets.get(project);
+    if (binding?.budget.signal?.aborted) throw recordLocalFailure(project, kind, 'RUN_INTERRUPTED', '本轮已中断，禁止发出后续请求。');
+    if (binding?.budget.infrastructureStopped || binding?.budget.failedKinds?.has(kind)) throw recordLocalFailure(project, kind, 'HTTP_RETRY_BLOCKED', '此前请求或保存失败；禁止自动重复外发。');
     const sharedLimits = binding?.budget.sharedLimits ?? SERVER_LIMITS;
-    if (project.usage[key] >= projectLimits(project)[key] || serverUsage[key] >= sharedLimits[key])
+    if (project.usage[key] >= projectLimits(project)[key] || (!binding?.budget.store && serverUsage[key] >= sharedLimits[key]))
       throw recordLocalFailure(project, kind, kind === 'model' ? 'MODEL_HTTP_BUDGET_EXHAUSTED' : 'QLOO_HTTP_BUDGET_EXHAUSTED', `${kind} HTTP 总额度已用尽`);
-    if (binding) {
+    let databaseEntry;
+    if (binding?.budget.store) {
+      databaseEntry = { id: randomUUID(), kind, time: new Date().toISOString(), status: null, durationMs: null,
+        method: String(options.method ?? url?.method ?? 'GET').toUpperCase(), host: destination.host, path: destination.pathname,
+        outcome: 'reserved_unknown' };
+      try {
+        const saved = await binding.budget.store.reserve(project, binding.budget.token, databaseEntry);
+        project.storageVersion = saved.project.storageVersion;
+        project.usage[key] = saved.project.usage[key];
+        (project.runtime.httpAttempts ??= []).push(databaseEntry);
+        binding.budget.usage = saved.usage;
+      } catch (error) {
+        binding.budget.failedKinds.add(kind);
+        if (error.code === 'HTTP_BUDGET_EXHAUSTED')
+          throw recordLocalFailure(project, kind, kind === 'model' ? 'MODEL_HTTP_BUDGET_EXHAUSTED' : 'QLOO_HTTP_BUDGET_EXHAUSTED', `${kind} HTTP 总额度已用尽；未发送请求。`);
+        if (error.code === 'VALIDATION_RUN_STOPPED')
+          throw recordLocalFailure(project, kind, 'VALIDATION_RUN_STOPPED', '共享真实运行或文化查询已停止；未发送请求。');
+        binding.budget.infrastructureStopped = true;
+        project.runtime.infrastructureStopped = true;
+        throw recordLocalFailure(project, kind, 'HTTP_BUDGET_PERSISTENCE_FAILED', '请求额度与请求记录未确认保存；未发送请求，也不会自动重试。');
+      }
+    } else if (binding) {
       const candidate = binding.budget.summary();
       candidate.usage[key]++;
       candidate.registeredProjects = { ...candidate.registeredProjects, [project.id]: { ...binding.entry,
@@ -372,7 +401,7 @@ export function budgetedFetch(implementation = originalFetch) {
         project.usage[key]++;
         serverUsage[key]++;
         for (const usageKey of usageKeys) binding.entry.usage[usageKey] = project.usage[usageKey];
-        binding.onReserve(project);
+        await binding.onReserve(project);
       }
       catch {
         validationRun.liveStopped = true;
@@ -381,16 +410,20 @@ export function budgetedFetch(implementation = originalFetch) {
       }
     } else { project.usage[key]++; serverUsage[key]++; }
     const started = Date.now();
-    const entry = { kind, time: new Date(started).toISOString(), status: null, durationMs: null,
+    const entry = databaseEntry ?? { kind, time: new Date(started).toISOString(), status: null, durationMs: null,
       method: String(options.method ?? url?.method ?? 'GET').toUpperCase(), host: destination.host, path: destination.pathname,
       ...(kind === 'model' && project.runtime.generationBudget ? { generationBudget: { ...project.runtime.generationBudget } } : {}) };
-    (project.runtime.httpAttempts ??= []).push(entry);
+    if (!databaseEntry) (project.runtime.httpAttempts ??= []).push(entry);
     validationRun.attempts.push(entry);
     // Automatic redirects would hide extra HTTP attempts from this counter.
     try {
-      const response = await implementation(url, { ...options, redirect: 'error' });
+      binding?.budget.signal?.throwIfAborted();
+      const signals = [binding?.budget.signal, options.signal, url?.signal].filter(Boolean);
+      const response = await implementation(url, { ...options, redirect: 'error',
+        ...(signals.length ? { signal: AbortSignal.any(signals) } : {}) });
       entry.status = response.status;
       entry.outcome = response.ok ? 'response_ok' : 'http_error';
+      if (!response.ok) binding?.budget.failedKinds?.add(kind);
       if (!response.ok && kind === 'model') {
         const safe = await safeProviderError(response, current.secrets ?? []);
         if (Object.keys(safe).length) entry.providerError = safe;
@@ -398,8 +431,22 @@ export function budgetedFetch(implementation = originalFetch) {
       return response;
     } catch (error) {
       entry.outcome = 'network_error';
+      binding?.budget.failedKinds?.add(kind);
       throw error;
-    } finally { entry.durationMs = Math.max(0, Date.now() - started); }
+    } finally {
+      entry.durationMs = Math.max(0, Date.now() - started);
+      if (databaseEntry) {
+        try { await binding.budget.store.finishAttempt(entry.id, entry); }
+        catch {
+          binding.budget.failedKinds.add(kind);
+          binding.budget.infrastructureStopped = true;
+          project.runtime.infrastructureStopped = true;
+          Object.assign(entry, { status: null, durationMs: null, outcome: 'reserved_unknown' });
+          delete entry.providerError;
+          throw recordLocalFailure(project, kind, 'HTTP_ATTEMPT_SAVE_FAILED', '请求已可能发出，但结果记录无法保存；本轮停止，禁止自动重发。');
+        }
+      }
+    }
   };
 }
 

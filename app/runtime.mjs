@@ -439,11 +439,12 @@ export function wrapProjectExecutor(project, officialExecutor, env = process.env
   } };
 }
 
-export async function createProductRuntime(project, { env = process.env, decide = offlineDecision, diagnostic, qlooExecutor } = {}) {
+export async function createProductRuntime(project, { env = process.env, decide = offlineDecision, diagnostic, qlooExecutor,
+  memorySession = false, runtimeRoot } = {}) {
   if (diagnostic && typeof diagnostic.fetch !== 'function') throw new Error('诊断必须提供独立的一次请求边界');
   const diagnosticState = diagnostic ? { modelCallbacks: 0, blockedModelCallbacks: 0, pausedToolNames: [], toolExecutionAttempts: 0 } : undefined;
   const root = resolve(new URL('..', import.meta.url).pathname.replace(/^\/(\w:)/, '$1'));
-  const paths = resolveQlooPaths({ cwd: root, env: { QLOO_HOME: resolve(root, '.art-runtime', project.id) } });
+  const paths = resolveQlooPaths({ cwd: root, env: { QLOO_HOME: runtimeRoot ?? resolve(root, '.art-runtime', project.id) } });
   const modelRuntime = await ModelRuntime.create({ authPath: paths.authFile, modelsPath: null, allowModelNetwork: false, refreshOnCreate: false });
   let liveStream;
   if (project.mode === 'live') {
@@ -584,10 +585,10 @@ export async function createProductRuntime(project, { env = process.env, decide 
       return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
     } });
   const sessionDirectory = resolve(root, '.art-runtime', project.id, 'sessions');
-  const savedSession = project.runtime.sessionFile;
+  const savedSession = memorySession ? null : project.runtime.sessionFile;
   const priorSession = savedSession && resolve(savedSession).startsWith(sessionDirectory + sep) && existsSync(savedSession);
-  let researchCarry = [];
-  for (const saved of new Set([...(project.runtime.sessionHistory ?? []), savedSession].filter(Boolean))) {
+  let researchCarry = memorySession ? structuredClone(project.runtime.openResearchQuestions ?? []) : [];
+  for (const saved of new Set([...(memorySession ? [] : project.runtime.sessionHistory ?? []), savedSession].filter(Boolean))) {
     if (!resolve(saved).startsWith(sessionDirectory + sep) || !existsSync(saved)) continue;
     // Parsing and building a context are public pure helpers; SessionManager.open
     // can migrate and rewrite old files, so do not open a closed session to read it.
@@ -597,7 +598,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
       throw new Error('当前项目的已存会话包含不可读取记录；停止并保留原文件。');
     researchCarry = unresolvedResearch(buildSessionContext(entries.filter(entry => entry.type !== 'session')).messages, researchCarry);
   }
-  const sessionManager = project.mode === 'offline' && priorSession
+  const sessionManager = memorySession ? SessionManager.inMemory(root) : project.mode === 'offline' && priorSession
     ? SessionManager.open(savedSession, sessionDirectory) : SessionManager.create(root, sessionDirectory);
   if (project.mode === 'live' && priorSession)
     (project.runtime.sessionHistory ??= []).push(savedSession);
@@ -714,6 +715,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
   session.agent.transformContext = async (messages, signal) => {
     const safe = sanitizedContext ? await sanitizedContext(messages, signal) : messages;
     researchCarry = unresolvedResearch(safe, researchCarry);
+    if (memorySession) project.runtime.openResearchQuestions = structuredClone(researchCarry);
     try { return assembleContext(safe, snapshotProject(project), submittedMessage, researchCarry); }
     catch (error) {
       if (error.code === 'MODEL_CONTEXT_PROTOCOL_INCOMPLETE')
@@ -802,6 +804,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
       if (revisionRequest?.status === 'running') finishRevisionRequest(project, revisionRequest, 'error', project.runtime.failure.summary);
       throw error;
     } finally {
+      if (memorySession) project.runtime.openResearchQuestions = unresolvedResearch(session.messages, researchCarry);
       project.runtime.totalLatencyMs = (project.runtime.totalLatencyMs ?? 0) + Math.max(0, Date.now() - started);
       const feedback = project.runtime.feedback;
       if (feedback) project.runtime.feedback = toolFeedback(project, feedback.code, feedback.path, feedback.reason,
@@ -820,5 +823,5 @@ export async function createProductRuntime(project, { env = process.env, decide 
         detail: project.runtime.failure?.summary ?? feedback?.reason ?? '本轮未产生通过校验的提案；当前状态已保留' };
     }
     return project;
-  }, dispose: () => runtime.dispose() };
+  }, abort: () => session.abort(), dispose: () => runtime.dispose() };
 }
