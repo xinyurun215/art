@@ -9,7 +9,7 @@ import { ModelRuntime, SessionManager, parseSessionEntries, buildSessionContext 
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { Errors } from 'typebox/value';
-import { applyProposal, proposeRevision, pendingRevisionDraft, finishRevisionRequest, REVISION_FIELDS, action, configStatus } from './state.mjs';
+import { applyProposal, proposeRevision, pendingRevisionDraft, finishRevisionRequest, REVISION_FIELDS, action, configStatus, LIMITS } from './state.mjs';
 import { withHttpBudget, withoutNetwork, validationRun, stopLiveRun, safeRuntimeFailure,
   remainingBudget, toolFeedback, recordLocalFailure, modelOutputLimit } from './transport.mjs';
 import { evidenceView, readProjectEvidence, qlooResultView, compactToolMessages, unresolvedResearch, assembleContext, requestBudget, clarificationView } from './context.mjs';
@@ -469,7 +469,11 @@ export async function createProductRuntime(project, { env = process.env, decide 
       if (!diagnostic && project.mode === 'live' && remainingBudget(project).modelHttpAttempts === 0)
         throw recordLocalFailure(project, 'model', 'MODEL_HTTP_BUDGET_EXHAUSTED', '模型 HTTP 总额度已用尽；本地已阻止请求。');
       project.usage.modelCalls++;
-      if (project.usage.modelCalls > 18) throw new Error('本项目模型轮次上限已到，暂停并保留当前状态');
+      // Preserve the default's twelve local-only callbacks without resetting cumulative usage.
+      const callbackLimit = Math.min(Number.MAX_SAFE_INTEGER, (project.mode === 'live'
+        ? remainingBudget(project).caseLimits.modelHttpAttempts : LIMITS.modelHttpAttempts) + 2 * LIMITS.modelHttpAttempts);
+      if (project.usage.modelCalls > callbackLimit)
+        throw recordLocalFailure(project, 'model', 'MODEL_CALLBACK_BUDGET_EXHAUSTED', '本项目模型轮次上限已到，暂停并保留当前状态');
       if (project.mode === 'offline') {
         const read = context.messages.filter(m => m.role === 'toolResult');
         read.forEach(m => { toolText(m); });
