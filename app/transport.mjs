@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import { LIMITS, SERVER_LIMITS } from './state.mjs';
 
 const context = new AsyncLocalStorage();
@@ -13,6 +13,85 @@ const usageKeys = Object.keys(LIMITS);
 const validCount = value => Number.isSafeInteger(value) && value >= 0;
 const validUsage = value => value && usageKeys.every(key => validCount(value[key]));
 const configurationError = () => Object.assign(new Error('HTTP 预算配置或持久化摘要无效；真实调用未启用。'), { code: 'HTTP_BUDGET_CONFIG_INVALID' });
+
+function checkSavedBudget(saved, limits, sharedLimits) {
+  if (saved.schemaVersion !== 1 || JSON.stringify(saved.limits) !== JSON.stringify(limits)
+    || JSON.stringify(saved.sharedLimits) !== JSON.stringify(sharedLimits) || !validUsage(saved.usage)
+    || typeof saved.queryStopped !== 'boolean' || typeof saved.liveStopped !== 'boolean'
+    || !saved.registeredProjects || typeof saved.registeredProjects !== 'object' || Array.isArray(saved.registeredProjects)
+    || saved.limitExtensions !== undefined && !Array.isArray(saved.limitExtensions)) throw configurationError();
+  for (const [id, entry] of Object.entries(saved.registeredProjects)) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(id) || !validUsage(entry?.limits) || !validUsage(entry?.usage)
+      || ![limits, LIMITS].some(allowed => usageKeys.every(key => entry.limits[key] === allowed[key]))) throw configurationError();
+  }
+}
+
+function lockBudget(directory) {
+  const path = resolve(directory, 'active.lock');
+  let descriptor;
+  try { descriptor = openSync(path, 'wx'); writeFileSync(descriptor, String(process.pid)); }
+  catch {
+    if (descriptor !== undefined) { closeSync(descriptor); unlinkSync(path); }
+    throw configurationError();
+  }
+  let released = false;
+  return { get released() { return released; }, release() {
+    if (!released) { closeSync(descriptor); unlinkSync(path); released = true; }
+  } };
+}
+
+function replaceBudgetFile(path, candidate, retry = true, onRenameFailure = () => {}) {
+  const temporary = `${path}.tmp`;
+  writeFileSync(temporary, JSON.stringify(candidate), 'utf8');
+  // ponytail: synchronous callers stay serialized; Windows EPERM waits at most 1.5s.
+  for (let attempt = 0; ; attempt++) {
+    try { renameSync(temporary, path); return; }
+    catch (error) {
+      if (process.platform !== 'win32' || error.code !== 'EPERM' || !retry || attempt === 4) {
+        onRenameFailure();
+        throw error;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100 * 2 ** attempt);
+    }
+  }
+}
+
+// Local offline operation only: no browser route or model tool invokes this function.
+// Deliberately limited to one registered project and a model-only increase.
+export function extendHttpBudget({ dataDir, projectId, expectedLimits, expectedUsage, newLimits, reason }) {
+  if (typeof dataDir !== 'string' || !isAbsolute(dataDir) || !/^[a-zA-Z0-9_-]+$/.test(projectId ?? '')
+    || ![expectedLimits, expectedUsage, newLimits].every(value => validUsage(value) && Object.keys(value).length === usageKeys.length)
+    || newLimits.modelHttpAttempts <= expectedLimits.modelHttpAttempts
+    || newLimits.qlooHttpAttempts !== expectedLimits.qlooHttpAttempts
+    || usageKeys.some(key => newLimits[key] < expectedUsage[key]) || typeof reason !== 'string' || !reason.trim()) throw configurationError();
+  const ordered = value => Object.fromEntries(usageKeys.map(key => [key, value[key]]));
+  const oldLimits = ordered(expectedLimits), limits = ordered(newLimits);
+  const directory = resolve(dataDir, '.http-budget'), path = resolve(directory, 'run.json');
+  const lock = lockBudget(directory);
+  try {
+    const original = readFileSync(path), saved = JSON.parse(original);
+    checkSavedBudget(saved, oldLimits, oldLimits);
+    const ids = Object.keys(saved.registeredProjects), entry = saved.registeredProjects[projectId];
+    if (ids.length !== 1 || ids[0] !== projectId) throw configurationError();
+    const project = JSON.parse(readFileSync(resolve(dataDir, `${projectId}.json`), 'utf8')).project;
+    if (project?.id !== projectId || !validUsage(project.usage)
+      || usageKeys.some(key => saved.usage[key] !== expectedUsage[key] || entry.usage[key] !== expectedUsage[key]
+        || project.usage[key] !== expectedUsage[key] || entry.limits[key] !== oldLimits[key])) throw configurationError();
+    const originalSha256 = createHash('sha256').update(original).digest('hex');
+    const backupPath = resolve(directory, `run.before-extension-${originalSha256}.json`);
+    // Create-only backup plus its content hash; never overwrite a previous backup.
+    if (existsSync(backupPath)) {
+      if (!readFileSync(backupPath).equals(original)) throw configurationError();
+    } else writeFileSync(backupPath, original, { flag: 'wx' });
+    const audit = { at: new Date().toISOString(), projectId, reason: reason.trim(), oldLimits, newLimits: limits, originalSha256 };
+    const candidate = { ...saved, limits, sharedLimits: { ...limits },
+      registeredProjects: { ...saved.registeredProjects, [projectId]: { ...entry, limits: { ...limits } } },
+      limitExtensions: [...(saved.limitExtensions ?? []), audit] };
+    if (!readFileSync(path).equals(original)) throw configurationError();
+    replaceBudgetFile(path, candidate);
+    return { ...audit, ledgerPath: path, backupPath };
+  } finally { lock.release(); }
+}
 
 // Only the server calls this entry. Client input and model tools cannot bind a budget.
 export function createHttpBudget({ env = {}, dataDir, onReserve = () => {} }) {
@@ -30,46 +109,26 @@ export function createHttpBudget({ env = {}, dataDir, onReserve = () => {} }) {
   const directory = resolve(dataDir, '.http-budget');
   mkdirSync(directory, { recursive: true });
   const path = resolve(directory, 'run.json');
-  const lockPath = resolve(directory, 'active.lock');
-  let lock;
-  try { lock = openSync(lockPath, 'wx'); writeFileSync(lock, String(process.pid)); }
-  catch {
-    if (lock !== undefined) { closeSync(lock); unlinkSync(lockPath); }
-    throw configurationError();
-  }
-  let released = false;
+  const lock = lockBudget(directory);
   let replacementFailed = false;
-  const release = () => { if (!released) { closeSync(lock); unlinkSync(lockPath); released = true; } };
+  const release = () => lock.release();
   const registeredProjects = Object.create(null);
-  const summary = () => ({ schemaVersion: 1, limits, sharedLimits, usage: { ...serverUsage }, registeredProjects,
+  let savedMetadata = {};
+  const summary = () => ({ ...savedMetadata, schemaVersion: 1, limits, sharedLimits, usage: { ...serverUsage }, registeredProjects,
     queryStopped: validationRun.queryStopped, liveStopped: validationRun.liveStopped,
     ...(validationRun.failure ? { failure: validationRun.failure } : {}) });
   const persist = (candidate = summary()) => {
-    if (released) throw configurationError();
-    const temporary = `${path}.tmp`;
-    writeFileSync(temporary, JSON.stringify(candidate), 'utf8');
-    // ponytail: preserve synchronous callers and serialization; EPERM can block for 1.5s.
-    for (let attempt = 0; ; attempt++) {
-      try { renameSync(temporary, path); return; }
-      catch (error) {
-        if (process.platform !== 'win32' || error.code !== 'EPERM' || replacementFailed || attempt === 4) {
-          replacementFailed = true;
-          throw error;
-        }
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100 * 2 ** attempt);
-      }
-    }
+    if (lock.released) throw configurationError();
+    replaceBudgetFile(path, candidate, !replacementFailed, () => { replacementFailed = true; });
   };
   try {
     if (existsSync(path)) {
       const saved = JSON.parse(readFileSync(path, 'utf8'));
-      if (saved.schemaVersion !== 1 || JSON.stringify(saved.limits) !== JSON.stringify(limits)
-        || JSON.stringify(saved.sharedLimits) !== JSON.stringify(sharedLimits) || !validUsage(saved.usage)
-        || typeof saved.queryStopped !== 'boolean' || typeof saved.liveStopped !== 'boolean'
-        || !saved.registeredProjects || typeof saved.registeredProjects !== 'object' || Array.isArray(saved.registeredProjects)) throw configurationError();
+      checkSavedBudget(saved, limits, sharedLimits);
+      // Keep offline extension audits and pre-existing history through ordinary writes.
+      savedMetadata = Object.fromEntries(Object.entries(saved).filter(([key]) =>
+        !['schemaVersion', 'limits', 'sharedLimits', 'usage', 'registeredProjects', 'queryStopped', 'liveStopped', 'failure'].includes(key)));
       for (const [id, entry] of Object.entries(saved.registeredProjects)) {
-        if (!/^[a-zA-Z0-9_-]+$/.test(id) || !validUsage(entry?.limits) || !validUsage(entry?.usage)
-          || ![limits, LIMITS].some(allowed => usageKeys.every(key => entry.limits[key] === allowed[key]))) throw configurationError();
         registeredProjects[id] = entry;
       }
       for (const key of usageKeys) serverUsage[key] = Math.max(serverUsage[key], saved.usage[key]);
