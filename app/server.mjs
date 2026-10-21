@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createProject, action, configStatus, answerClarification, selectConcept, beginRevision, beginPendingFeedback,
@@ -27,13 +27,23 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
   const runtimes = new Map();
   function saveProject(project) {
     if (!project || !/^[a-zA-Z0-9_-]+$/.test(project.id)) throw new Error('项目标识无效');
-    mkdirSync(dataDir, { recursive: true });
     const path = resolve(dataDir, `${project.id}.json`);
     const temporary = `${path}.tmp`;
-    writeFileSync(temporary, JSON.stringify({ schemaVersion: 1, project }), 'utf8');
-    renameSync(temporary, path);
-    projects.set(project.id, project);
-    return project;
+    try {
+      mkdirSync(dataDir, { recursive: true });
+      writeFileSync(temporary, JSON.stringify({ schemaVersion: 1, project }), 'utf8');
+      renameSync(temporary, path);
+    } catch {
+      try { unlinkSync(temporary); } catch { /* A leftover candidate is never loaded as a project. */ }
+      throw Object.assign(new Error('项目未保存；上次已保存的状态保持不变，本次输入可重新提交。'),
+        { statusCode: 503, code: 'PROJECT_SAVE_FAILED' });
+    }
+    const authority = projects.get(project.id);
+    if (authority && authority !== project) {
+      for (const key of Object.keys(authority)) delete authority[key];
+      Object.assign(authority, structuredClone(project));
+    } else projects.set(project.id, project);
+    return authority ?? project;
   }
   const httpBudget = createHttpBudget({ env, dataDir, onReserve: saveProject });
   try {
@@ -57,9 +67,16 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
   function schedule(project, text) {
     project.status = { phase: 'busy', detail: '官方会话正在处理；行动与证据将持续更新' };
     saveProject(project);
+    const candidate = structuredClone(project);
     // The SDK's environment helpers are process-scoped. Serialize submissions
     // to keep concurrent projects from borrowing one another's private path.
     queue = queue.then(async () => {
+      let entry = runtimes.get(candidate.id);
+      if (entry) {
+        for (const key of Object.keys(entry.project)) delete entry.project[key];
+        Object.assign(entry.project, candidate);
+      }
+      const project = entry?.project ?? candidate;
       if (project.mode === 'live' && validationRun.liveStopped) {
         project.runtime.failure = { kind: 'runtime', code: 'VALIDATION_RUN_STOPPED', status: null, stopReason: 'error',
           summary: '此前真实案例已停止；本项目排队任务未执行，也未发出模型或文化查询请求。' };
@@ -70,8 +87,12 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
         return;
       }
       try {
-        if (!runtimes.has(project.id)) runtimes.set(project.id, await createProductRuntime(project, { ...runtimeOptions, env }));
-        await runtimes.get(project.id).submit(text);
+        if (!entry) {
+          httpBudget.bind(project);
+          entry = { project, runtime: await createProductRuntime(project, { ...runtimeOptions, env }) };
+          runtimes.set(project.id, entry);
+        }
+        await entry.runtime.submit(text);
       } catch {
         project.runtime.failure ??= safeRuntimeFailure(project, 'model');
         stopLiveRun(project, project.runtime.failure);
@@ -83,6 +104,10 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
       } finally {
         saveProject(project);
       }
+    }).catch(async () => {
+      const entry = runtimes.get(candidate.id);
+      runtimes.delete(candidate.id);
+      try { await entry?.runtime.dispose(); } catch { /* A failed save must not stop later queue entries or shutdown. */ }
     });
   }
   const server = createServer(async (request, response) => {
@@ -100,19 +125,20 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
           return json(response, 409, { error: '真实模式未单独启用或缺少明确配置；离线演示无需密钥。' });
         const project = createProject(input);
         httpBudget.bind(project, true);
-        projects.set(project.id, project);
         schedule(project, project.brief.request);
         return json(response, 202, { project });
       }
       const match = /^\/api\/projects\/([^/]+)(?:\/(messages|select|revisions)(?:\/([^/]+)\/(accept|reject|feedback))?)?$/.exec(url.pathname);
       if (match) {
-        const project = projects.get(match[1]);
+        let project = projects.get(match[1]);
         if (!project) return json(response, 404, { error: '项目不存在；请检查当前本地项目存储。' });
         if (request.method === 'GET' && !match[2]) return json(response, 200, { project });
         if (request.method === 'POST' && match[2]) {
-          if (project.status.phase === 'busy') return json(response, 409, { error: '当前任务仍在处理，请稍后补充。', code: 'PROJECT_BUSY' });
           const input = await body(request);
           if (closing) return json(response, 503, { error: '服务正在关闭，未接受新的任务。' });
+          project = projects.get(match[1]);
+          if (project.status.phase === 'busy') return json(response, 409, { error: '当前任务仍在处理，请稍后补充。', code: 'PROJECT_BUSY' });
+          project = structuredClone(project);
           if (match[2] === 'select' && !match[3]) {
             selectConcept(project, input); saveProject(project);
             return json(response, 200, { project });
@@ -130,8 +156,8 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
             }
             const continuation = respondToReference(project, input.referenceResolution);
             project.messages.push({ role: 'user', text: continuation ?? '取消实体选择；原文化参考尚未解决，等待补充信息。' });
-            saveProject(project);
             if (continuation) schedule(project, continuation);
+            else saveProject(project);
             return json(response, continuation ? 202 : 200, { project });
           }
           if (typeof input.text !== 'string' || !input.text.trim()) return json(response, 400, { error: '请输入补充说明' });
@@ -174,7 +200,7 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
     closing = true;
     const closed = server.listening ? new Promise((done, reject) => server.close(error => error ? reject(error) : done())) : Promise.resolve();
     await queue;
-    await Promise.all([...runtimes.values()].map(runtime => runtime.dispose()));
+    await Promise.all([...runtimes.values()].map(entry => entry.runtime.dispose()));
     await closed;
     httpBudget.persist(); httpBudget.release();
   } };
