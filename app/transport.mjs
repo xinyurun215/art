@@ -38,16 +38,27 @@ export function createHttpBudget({ env = {}, dataDir, onReserve = () => {} }) {
     throw configurationError();
   }
   let released = false;
+  let replacementFailed = false;
   const release = () => { if (!released) { closeSync(lock); unlinkSync(lockPath); released = true; } };
   const registeredProjects = Object.create(null);
   const summary = () => ({ schemaVersion: 1, limits, sharedLimits, usage: { ...serverUsage }, registeredProjects,
     queryStopped: validationRun.queryStopped, liveStopped: validationRun.liveStopped,
     ...(validationRun.failure ? { failure: validationRun.failure } : {}) });
-  const persist = () => {
+  const persist = (candidate = summary()) => {
     if (released) throw configurationError();
     const temporary = `${path}.tmp`;
-    writeFileSync(temporary, JSON.stringify(summary()), 'utf8');
-    renameSync(temporary, path);
+    writeFileSync(temporary, JSON.stringify(candidate), 'utf8');
+    // ponytail: preserve synchronous callers and serialization; EPERM can block for 1.5s.
+    for (let attempt = 0; ; attempt++) {
+      try { renameSync(temporary, path); return; }
+      catch (error) {
+        if (process.platform !== 'win32' || error.code !== 'EPERM' || replacementFailed || attempt === 4) {
+          replacementFailed = true;
+          throw error;
+        }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100 * 2 ** attempt);
+      }
+    }
   };
   try {
     if (existsSync(path)) {
@@ -274,6 +285,7 @@ export function budgetedFetch(implementation = originalFetch) {
     if (!current) throw new Error('HTTP 请求缺少明确的项目额度上下文');
     const { project, kind, origin } = current;
     if (project.mode !== 'live') throw recordLocalFailure(project, kind, 'OFFLINE_HTTP_BLOCKED', '离线模式禁止外部 HTTP 请求');
+    if (validationRun.liveStopped) throw recordLocalFailure(project, kind, 'VALIDATION_RUN_STOPPED', '本轮真实调用已经停止');
     const destination = new URL(typeof url === 'string' || url instanceof URL ? url : url.url);
     if (destination.origin !== origin) throw recordLocalFailure(project, kind, 'HTTP_ENDPOINT_BLOCKED', '请求端点不在本次明确配置范围内');
     if (kind === 'model' && project.runtime.generationBudget) {
@@ -282,6 +294,8 @@ export function budgetedFetch(implementation = originalFetch) {
       if (finalMaxTokens !== project.runtime.generationBudget.finalMaxTokens)
         throw recordLocalFailure(project, kind, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT', '模型实际发送参数与预检容量不符；本地已阻止请求。');
     }
+    // Reading a Request body can yield while another caller stops the run.
+    if (validationRun.liveStopped) throw recordLocalFailure(project, kind, 'VALIDATION_RUN_STOPPED', '本轮真实调用已经停止');
     const key = kind === 'model' ? 'modelHttpAttempts' : 'qlooHttpAttempts';
     if (kind === 'qloo' && (project.runtime.queryStopped || validationRun.queryStopped))
       throw recordLocalFailure(project, kind, 'QLOO_QUERY_STOPPED', '本轮真实查询已经停止');
@@ -289,17 +303,24 @@ export function budgetedFetch(implementation = originalFetch) {
     const sharedLimits = binding?.budget.sharedLimits ?? SERVER_LIMITS;
     if (project.usage[key] >= projectLimits(project)[key] || serverUsage[key] >= sharedLimits[key])
       throw recordLocalFailure(project, kind, kind === 'model' ? 'MODEL_HTTP_BUDGET_EXHAUSTED' : 'QLOO_HTTP_BUDGET_EXHAUSTED', `${kind} HTTP 总额度已用尽`);
-    project.usage[key]++;
-    serverUsage[key]++;
     if (binding) {
-      for (const usageKey of usageKeys) binding.entry.usage[usageKey] = project.usage[usageKey];
-      try { binding.budget.persist(); binding.onReserve(project); }
+      const candidate = binding.budget.summary();
+      candidate.usage[key]++;
+      candidate.registeredProjects = { ...candidate.registeredProjects, [project.id]: { ...binding.entry,
+        usage: Object.fromEntries(usageKeys.map(usageKey => [usageKey, project.usage[usageKey] + (usageKey === key ? 1 : 0)])) } };
+      try {
+        binding.budget.persist(candidate);
+        project.usage[key]++;
+        serverUsage[key]++;
+        for (const usageKey of usageKeys) binding.entry.usage[usageKey] = project.usage[usageKey];
+        binding.onReserve(project);
+      }
       catch {
         validationRun.liveStopped = true;
         try { binding.budget.persist(); } catch { /* Fail closed even when the ledger itself cannot be written. */ }
         throw recordLocalFailure(project, kind, 'HTTP_BUDGET_PERSISTENCE_FAILED', '请求额度无法保存；未发送请求，本轮停止。');
       }
-    }
+    } else { project.usage[key]++; serverUsage[key]++; }
     const started = Date.now();
     const entry = { kind, time: new Date(started).toISOString(), status: null, durationMs: null,
       method: String(options.method ?? url?.method ?? 'GET').toUpperCase(), host: destination.host, path: destination.pathname,
