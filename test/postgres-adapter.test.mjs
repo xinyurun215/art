@@ -73,7 +73,7 @@ sqlTest('function HTTP routes await the official offline runtime, protect access
   assert.equal((await first('GET', '/')).status, 200);
   assert.equal((await first('GET', '/index.html', null, null)).status, 401);
   const routing = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8'));
-  for (const source of ['/', '/index.html', '/api/:path*']) assert(routing.rewrites.some(route => route.source === source && route.destination === '/api/index'));
+  for (const src of ['/', '/index\\.html', '/api(?:/.*)?']) assert(routing.routes.some(route => route.src === src && route.dest === '/api/index'));
   assert.equal((await first('POST', '/api/projects', { brief }, authorization, { Origin: 'https://other.invalid' })).status, 403);
   assert.equal((await first('POST', '/api/projects', { brief }, authorization, { 'Content-Type': 'text/plain' })).status, 403);
   const config = await first('GET', '/api/config');
@@ -93,6 +93,42 @@ sqlTest('function HTTP routes await the official offline runtime, protect access
   for (const text of ['/private/', 'synthetic-internal-value', privateState.runtime.runs[0].id]) assert.equal(publicState.text.includes(text), false);
   assert.equal(publicState.body.project.usage.modelHttpAttempts, 0); assert.equal(publicState.body.project.usage.qlooHttpAttempts, 0);
   assert.equal((await first('GET', '/api/projects')).status, 404);
+});
+
+test('Vercel routes protect homepage and APIs before the static filesystem without a database', async () => {
+  const routing = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8'));
+  assert(Array.isArray(routing.routes), 'explicit routes must protect the homepage before filesystem lookup');
+  const filesystem = routing.routes.findIndex(route => route.handle === 'filesystem');
+  assert(filesystem >= 0, 'static assets require filesystem lookup');
+  for (const path of ['/', '/index.html', '/api', '/api/config', '/api/projects/example/messages']) {
+    const index = routing.routes.findIndex(route => route.src && new RegExp(`^${route.src}$`).test(path));
+    assert(index >= 0 && index < filesystem, `${path} must reach authentication before filesystem lookup`);
+    assert.equal(routing.routes[index].dest, '/api/index');
+  }
+  for (const path of ['/app.js', '/styles.css', '/apix'])
+    assert(!routing.routes.slice(0, filesystem).some(route => route.src && new RegExp(`^${route.src}$`).test(path)), path);
+  assert.deepEqual(routing.functions['api/index.mjs'], { maxDuration: 300, includeFiles: 'fixtures/**' });
+});
+
+test('function POST access requires matching HTTPS Origin and JSON without a database', async t => {
+  const app = createAppServer({ env, store: {}, functionMode: true });
+  t.after(() => app.dispose());
+  const call = async headers => {
+    const result = {};
+    await app.handler({ method: 'POST', url: '/api/origin-probe', headers: {
+      authorization, 'content-type': 'application/json', host: 'preview.invalid',
+      'x-forwarded-proto': 'https', 'x-forwarded-host': 'other.invalid', ...headers
+    } }, { setHeader() {}, writeHead(status) { result.status = status; }, end(text) { result.body = JSON.parse(text); } });
+    return result;
+  };
+  for (const [origin, status] of [['https://other.invalid', 403], ['http://preview.invalid', 403],
+    ['https://preview.invalid', 404], [undefined, 404]]) {
+    const result = await call({ origin });
+    assert.equal(result.status, status, `Origin: ${origin}`);
+    if (status === 403) assert.equal(result.body.code, 'CROSS_ORIGIN_REQUEST_BLOCKED');
+  }
+  assert.equal((await call({ authorization: undefined, origin: 'https://preview.invalid' })).status, 401);
+  assert.equal((await call({ origin: 'https://preview.invalid', 'content-type': 'text/plain' })).status, 403);
 });
 
 test('function fails closed without database, preview identity or independent access key', async t => {

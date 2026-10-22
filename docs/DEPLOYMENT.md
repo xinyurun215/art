@@ -1,10 +1,10 @@
 # Vercel 受保护预览
 
-此适配复用现有页面、请求路由和官方 Qloo Harness（运行套件），无需切换框架。仅接受 `VERCEL_ENV=preview`；生产请求默认拒绝。没有创建云资源、绑定项目或部署。
+此适配复用现有页面、请求路由和官方 Qloo Harness（运行套件），无需切换框架。仅接受 `VERCEL_ENV=preview`；生产请求默认拒绝。以下是本轮离线验收的准备步骤，不表示已完成 Preview 部署或验收。
 
-1. 确认目标 art Vercel 项目（与旧 TasteTrip 项目隔离）和已授权的 Postgres（关系数据库）；无需为本适配重复创建已有 art 项目。Neon 可使用 pooled（连接池）TLS 连接地址。先由数据库管理工具执行一次 `migrations/001-postgres.sql`；应用不会自动执行迁移或导入本机历史项目。
-2. 在目标项目 Preview（预览）环境导入 `.env.vercel.example`，填写模型密钥、Qloo 密钥、数据库连接及独立随机 `ART_PREVIEW_ACCESS_KEY`（预览访问密钥）。模板复用既有 DeepSeek/Qloo 配置；默认 `ART_ENABLE_LIVE=false`，填密钥不会开启真实请求。
-3. 开启 Vercel Authentication（平台身份验证）的 All Deployments（所有部署）保护。应用另以浏览器原生 Basic Authentication（基本身份验证）保护首页和全部 API（应用程序接口）：用户名为 `preview`，密码是预览访问密钥。未设置密钥、数据库或预览环境时直接拒绝访问。静态脚本和样式不含项目或秘密。不要公开分享访问密钥；这不是多人账号或项目权限系统。
+1. 确认目标 art Vercel 项目（与旧 TasteTrip 项目隔离），无需重复创建。仅在用户具体批准的隔离测试 Postgres（关系数据库）中，由数据库管理工具执行一次 `migrations/001-postgres.sql`；Neon 可使用 pooled（连接池）TLS 连接地址。应用不会自动执行迁移或导入本机历史项目。
+2. 仅在目标项目 Preview（预览）环境配置 `DATABASE_URL`、独立随机 `ART_PREVIEW_ACCESS_KEY`（预览访问密钥）和 `ART_ENABLE_LIVE=false`；`VERCEL_ENV` 由 Vercel 提供。`.env.vercel.example` 仅作为字段参考；本轮离线验收无需填写或搬迁模型、Qloo 密钥，不导入本机 `.env`。
+3. 核实现有 Hobby Standard Protection（标准保护）对 Preview 的覆盖，以及正式域名不受其保护（包括正式 vercel.app 域名）的边界；不要自动更改安全设置或切换为 All Deployments（所有部署）。应用另以浏览器原生 Basic Authentication（基本身份验证）保护首页和全部 API（应用程序接口）：用户名为 `preview`，密码是预览访问密钥。未设置密钥、数据库或预览环境时直接拒绝访问。静态脚本和样式不含项目或秘密。不要公开分享访问密钥；这不是多人账号或项目权限系统。
 4. 保持 Node.js（运行环境）22.19+，核对平台的 Node 版本。`vercel.json` 把首页与 `/api/*` 接到同一 Node Function（函数）；函数最长 300 秒，应用在 250 秒中断并保存状态。平台设置、真实函数打包与部署行为需单独验证。
 
 项目、证据、待审稿、版本、运行记录和 HTTP（网络）请求账本保存在数据库。函数请求等待本轮结束才响应，不在返回 202 后依赖内存队列。数据库只允许一个实际运行；竞争请求返回 409，未排队。每轮用官方公开 `SessionManager.inMemory`（内存会话）接收权威项目视图，不复制或重放历史私有会话文件；临时文件仅供官方 SDK（开发套件）设置使用。

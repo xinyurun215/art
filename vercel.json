@@ -6,9 +6,10 @@
   "functions": {
     "api/index.mjs": { "maxDuration": 300, "includeFiles": "fixtures/**" }
   },
-  "rewrites": [
-    { "source": "/", "destination": "/api/index" },
-    { "source": "/index.html", "destination": "/api/index" },
-    { "source": "/api/:path*", "destination": "/api/index" }
+  "routes": [
+    { "src": "/", "dest": "/api/index" },
+    { "src": "/index\\.html", "dest": "/api/index" },
+    { "src": "/api(?:/.*)?", "dest": "/api/index" },
+    { "handle": "filesystem" }
   ]
 }

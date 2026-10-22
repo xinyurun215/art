@@ -201,7 +201,7 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
       const url = new URL(request.url, 'http://127.0.0.1');
       if (functionMode && request.method === 'POST' && url.pathname.startsWith('/api/')) {
         const origin = request.headers.origin;
-        const sameOrigin = origin === undefined || (URL.canParse(origin) && ['http:', 'https:'].includes(new URL(origin).protocol)
+        const sameOrigin = origin === undefined || (URL.canParse(origin) && new URL(origin).protocol === 'https:'
           && new URL(origin).host === request.headers.host);
         if (!sameOrigin || request.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/json')
           return json(response, 403, { error: '变更接口只接受同源 JSON 请求。', code: 'CROSS_ORIGIN_REQUEST_BLOCKED' });
