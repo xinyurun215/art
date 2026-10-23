@@ -131,11 +131,54 @@ test('function POST access requires matching HTTPS Origin and JSON without a dat
   assert.equal((await call({ origin: 'https://preview.invalid', 'content-type': 'text/plain' })).status, 403);
 });
 
-test('function fails closed without database, preview identity or independent access key', async t => {
-  for (const badEnv of [{}, { ...env, VERCEL_ENV: 'production' }, { ...env, ART_PREVIEW_ACCESS_KEY: '' }]) {
+test('function fails closed without database, deployment identity or independent access key', async t => {
+  for (const badEnv of [{}, { ...env, VERCEL_ENV: 'production' }, { ...env, ART_PREVIEW_ACCESS_KEY: '' },
+    { ...env, VERCEL_ENV: 'development', DATABASE_URL: 'postgres://unused.invalid/art' }]) {
     const call = await serve(t, createFunctionHandler({ env: badEnv }));
     const result = await call('GET', '/api/config'); assert.equal(result.status, 503);
     assert.equal(result.body.code, 'PREVIEW_CONFIGURATION_REQUIRED');
+  }
+});
+
+test('preview and production retain authentication, configuration and origin guards without model or database calls', async t => {
+  async function call(handler, { path = '/api/config', auth = authorization, method = 'GET', headers = {} } = {}) {
+    const result = { headers: {} };
+    await handler({ method, url: path, headers: { authorization: auth, host: 'art.invalid',
+      'content-type': 'application/json', ...headers } }, {
+      setHeader(key, value) { result.headers[key.toLowerCase()] = value; },
+      writeHead(status, headers) { result.status = status; Object.assign(result.headers, headers); },
+      end(text) { result.text = String(text); }
+    });
+    return result;
+  }
+  const store = { limits: {}, sharedLimits: {} };
+  for (const VERCEL_ENV of ['preview', 'production']) {
+    const configured = { ...env, VERCEL_ENV };
+    const app = createAppServer({ env: configured, store, functionMode: true,
+      runtimeFactory: async () => { assert.fail('configuration checks must not start a model'); } });
+    t.after(() => app.dispose());
+    for (const handler of [app.handler, createFunctionHandler({ env: configured, store })]) {
+      for (const path of ['/', '/index.html', '/api/config']) {
+        const denied = await call(handler, { path, auth: null });
+        assert.equal(denied.status, 401); assert.match(denied.headers['www-authenticate'], /Basic/);
+      }
+      assert.equal((await call(handler, { auth: 'Basic invalid' })).status, 401);
+      const config = await call(handler);
+      assert.equal(config.status, 200); assert.equal(JSON.parse(config.text).modes.live.available, false);
+      for (const secret of Object.values(configured).filter(value => value.includes('secret')))
+        assert.equal(config.text.includes(secret), false);
+      assert.equal((await call(handler, { method: 'POST', path: '/api/origin-probe',
+        headers: { origin: 'https://other.invalid' } })).status, 403);
+      assert.equal((await call(handler, { method: 'POST', path: '/api/origin-probe',
+        headers: { origin: 'https://art.invalid' } })).status, 404);
+    }
+    for (const badEnv of [{ ...configured, ART_PREVIEW_ACCESS_KEY: '' },
+      { ...configured, VERCEL_ENV: 'development' }, { ...configured, VERCEL_ENV: undefined }]) {
+      for (const handler of [createFunctionHandler({ env: badEnv, store }),
+        createAppServer({ env: badEnv, store, functionMode: true }).handler])
+        assert.equal((await call(handler)).status, 503);
+    }
+    assert.equal((await call(createFunctionHandler({ env: configured }))).status, 503);
   }
 });
 

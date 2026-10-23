@@ -4,9 +4,9 @@ import { createPostgresStore } from '../app/store.mjs';
 export function createFunctionHandler({ env = process.env, store, ...options } = {}) {
   let app;
   return async (request, response) => {
-    if (env.VERCEL_ENV !== 'preview' || !env.ART_PREVIEW_ACCESS_KEY || (!store && !env.DATABASE_URL)) {
+    if (!['preview', 'production'].includes(env.VERCEL_ENV) || !env.ART_PREVIEW_ACCESS_KEY || (!store && !env.DATABASE_URL)) {
       response.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-      response.end(JSON.stringify({ code: 'PREVIEW_CONFIGURATION_REQUIRED', error: '需要受保护预览、访问密钥和数据库；未回退本地存储。' }));
+      response.end(JSON.stringify({ code: 'PREVIEW_CONFIGURATION_REQUIRED', error: '需要预览或生产环境、访问密钥和数据库；未回退本地存储。' }));
       return;
     }
     try { app ??= createAppServer({ ...options, env, store: store ?? createPostgresStore({ connectionString: env.DATABASE_URL, env }), functionMode: true }); }

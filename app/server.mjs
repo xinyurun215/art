@@ -189,8 +189,8 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
     try {
       if (closing) return json(response, 503, { error: '服务正在关闭，未接受新的任务。' });
       if (functionMode) {
-        if (env.VERCEL_ENV !== 'preview' || !store || !env.ART_PREVIEW_ACCESS_KEY)
-          return json(response, 503, { error: '仅允许配置数据库和访问密钥的受保护预览；未启用生产访问。', code: 'PREVIEW_CONFIGURATION_REQUIRED' });
+        if (!['preview', 'production'].includes(env.VERCEL_ENV) || !store || !env.ART_PREVIEW_ACCESS_KEY)
+          return json(response, 503, { error: '仅允许配置数据库和访问密钥的预览或生产环境。', code: 'PREVIEW_CONFIGURATION_REQUIRED' });
         const supplied = Buffer.from(String(request.headers.authorization ?? ''));
         const expected = Buffer.from(`Basic ${Buffer.from(`preview:${env.ART_PREVIEW_ACCESS_KEY}`).toString('base64')}`);
         if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
