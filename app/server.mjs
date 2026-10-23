@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createProject, action, configStatus, answerClarification, selectConcept, setFieldLock, beginRevision, beginPendingFeedback,
   finishRevisionRequest, decideRevision } from './state.mjs';
 import { createProductRuntime } from './runtime.mjs';
-import { createHttpBudget, bindDatabaseBudget, validationRun, stopLiveRun, safeRuntimeFailure } from './transport.mjs';
+import { createHttpBudget, bindDatabaseBudget, validationRun, stopLiveRun, safeRuntimeFailure, recordLocalFailure } from './transport.mjs';
 import { pendingReference, respondToReference, referenceQuestion } from './references.mjs';
 import { interruptProject } from './store.mjs';
 
@@ -111,6 +111,9 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
       catch (error) {
         if (error.code === 'RUN_INTERRUPTED') interruptProject(project, error.message);
         else {
+          if (!project.runtime.sessionId && !project.runtime.localFailure)
+            recordLocalFailure(project, 'model', error.code === 'ERR_MODULE_NOT_FOUND' ? 'MODEL_MODULE_UNAVAILABLE' : 'MODEL_RUNTIME_SETUP_FAILED',
+              '真实运行时未能启动；未发出模型或文化查询请求。');
           project.runtime.failure ??= safeRuntimeFailure(project, 'model');
           project.status = { phase: 'error', detail: project.runtime.failure.summary };
           if (project.revisionRequest?.status === 'running') finishRevisionRequest(project, project.revisionRequest, 'error', project.status.detail);
@@ -168,7 +171,10 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
           runtimes.set(project.id, entry);
         }
         await entry.runtime.submit(text);
-      } catch {
+      } catch (error) {
+        if (!project.runtime.sessionId && !project.runtime.localFailure)
+          recordLocalFailure(project, 'model', error.code === 'ERR_MODULE_NOT_FOUND' ? 'MODEL_MODULE_UNAVAILABLE' : 'MODEL_RUNTIME_SETUP_FAILED',
+            '真实运行时未能启动；未发出模型或文化查询请求。');
         project.runtime.failure ??= safeRuntimeFailure(project, 'model');
         stopLiveRun(project, project.runtime.failure);
         project.status = { phase: 'error', detail: project.runtime.failure.summary };

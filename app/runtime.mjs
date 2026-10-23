@@ -452,9 +452,15 @@ export async function createProductRuntime(project, { env = process.env, decide 
   if (project.mode === 'live') {
     const config = configStatus(env);
     if (!config.modes.live.available) throw new Error(`真实模式未启用或配置不完整：${config.modes.live.missing.join(', ')}`);
-    const supported = ['openai-completions', 'openai-responses', 'anthropic-messages'];
-    if (!supported.includes(env.ART_MODEL_API)) throw new Error('当前仅支持明确配置的 OpenAI 兼容补全／响应或 Anthropic 消息协议');
-    liveStream = (await import(`@earendil-works/pi-ai/api/${env.ART_MODEL_API}`)).streamSimple;
+    // Literal import() specifiers so Vercel file tracing can pack the provider
+    // modules. A runtime template string is invisible to the bundler.
+    const liveStreams = {
+      'openai-completions': () => import('@earendil-works/pi-ai/api/openai-completions'),
+      'openai-responses': () => import('@earendil-works/pi-ai/api/openai-responses'),
+      'anthropic-messages': () => import('@earendil-works/pi-ai/api/anthropic-messages'),
+    };
+    liveStream = (await liveStreams[env.ART_MODEL_API]?.())?.streamSimple;
+    if (typeof liveStream !== 'function') throw new Error('当前仅支持明确配置的 OpenAI 兼容补全／响应或 Anthropic 消息协议');
   }
   const provider = project.mode === 'offline' ? `offline-${project.id}` : env.ART_MODEL_PROVIDER;
   const modelId = project.mode === 'offline' ? 'synthetic-design-fixture' : env.ART_MODEL_ID;
