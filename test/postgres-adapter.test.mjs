@@ -284,7 +284,8 @@ sqlTest('a real SQL save failure publishes nothing and never starts a runtime', 
 });
 
 sqlTest('real SQL reserves shared caps and request records atomically across store instances, and rejects duplicate sends', async t => {
-  const { stores, pools } = await fixture(t, { ART_MODEL_HTTP_LIMIT: '1', ART_QLOO_HTTP_LIMIT: '0' });
+  const { stores, pools } = await fixture(t, { ART_MODEL_HTTP_LIMIT: '1', ART_QLOO_HTTP_LIMIT: '0',
+    ART_SHARED_MODEL_HTTP_LIMIT: '1', ART_SHARED_QLOO_HTTP_LIMIT: '0' });
   const live = createProject({ brief, mode: 'live' });
   const active = await stores[0].save(live, { start: true });
   const snapshots = await Promise.all(stores.map(store => store.get(live.id)));
@@ -302,6 +303,31 @@ sqlTest('real SQL reserves shared caps and request records atomically across sto
   await assert.rejects(() => withHttpBudget(next.project, 'model', 'https://model.invalid', () => fake('https://model.invalid/v1')), /未发送请求/);
   assert.equal(sends, 1);
   assert.equal((await pools[0].query('SELECT usage FROM art_budget_runs')).rows[0].usage.modelHttpAttempts, 1);
+});
+
+sqlTest('real SQL leases, stops and caps stay per project; changed limits keep recorded usage', async t => {
+  const { stores, pools } = await fixture(t, { ART_MODEL_HTTP_LIMIT: '1' });
+  const [first, second] = await Promise.all(stores.map(store => store.save(createProject({ brief, mode: 'live' }), { start: true })));
+  await assert.rejects(() => stores[1].save(first.project, { start: true }), { code: 'RUNTIME_BUSY' });
+  for (const [index, active] of [first, second].entries()) {
+    const reserved = await stores[index].reserve(active.project, active.token, { id: randomUUID(), kind: 'model' });
+    assert.equal(reserved.project.usage.modelHttpAttempts, 1);
+    if (index === 0) {
+      reserved.project.runtime.failure = { kind: 'model', code: 'HTTP_ERROR' };
+      await stores[0].save(reserved.project, { token: active.token });
+    }
+  }
+  const third = await stores[0].save(createProject({ brief, mode: 'live' }), { start: true });
+  await stores[0].reserve(third.project, third.token, { id: randomUUID(), kind: 'model' });
+  assert.deepEqual((await pools[0].query('SELECT usage FROM art_budget_runs')).rows[0].usage, { modelHttpAttempts: 3, qlooHttpAttempts: 0 });
+  const raised = createPostgresStore({ pool: pools[1], env: { ART_MODEL_HTTP_LIMIT: '4', ART_SHARED_MODEL_HTTP_LIMIT: '4' } });
+  const current = await raised.get(third.project.id);
+  await raised.reserve(current, third.token, { id: randomUUID(), kind: 'model' });
+  const fourth = await raised.save(createProject({ brief, mode: 'live' }), { start: true });
+  await assert.rejects(() => raised.reserve(fourth.project, fourth.token, { id: randomUUID(), kind: 'model' }), { code: 'HTTP_BUDGET_EXHAUSTED' });
+  const run = (await pools[0].query('SELECT * FROM art_budget_runs')).rows[0];
+  assert.deepEqual(run.limits, { modelHttpAttempts: 4, qlooHttpAttempts: 6 });
+  assert.deepEqual(run.usage, { modelHttpAttempts: 4, qlooHttpAttempts: 0 });
 });
 
 sqlTest('SQL reservation faults block all later egress and roll back counters', async t => {
@@ -337,13 +363,14 @@ sqlTest('an expired real SQL lease marks interrupted without replay, preserves u
   const active = await stores[0].save(createProject({ brief, mode: 'live' }), { start: true });
   const reserved = await stores[0].reserve(active.project, active.token, { id: randomUUID(), kind: 'model', status: null, outcome: 'reserved_unknown' });
   await pools[0].query(`UPDATE art_projects SET lease_until=now()-interval '1 second'`);
-  await pools[0].query(`UPDATE art_budget_runs SET lease_until=now()-interval '1 second'`);
-  await assert.rejects(() => stores[1].save(createProject({ brief, mode: 'live' }), { start: true }), { code: 'RUN_RECOVERY_REQUIRED' });
+  await assert.rejects(() => stores[1].save(reserved.project, { start: true }), { code: 'RUN_RECOVERY_REQUIRED' });
   const recovered = await stores[1].get(active.project.id);
   assert.equal(recovered.status.phase, 'interrupted'); assert.equal(recovered.runtime.runs[0].status, 'interrupted');
   assert.equal(recovered.usage.modelHttpAttempts, 1); assert.equal(recovered.runtime.httpAttempts[0].outcome, 'reserved_unknown');
   await assert.rejects(() => stores[0].save(reserved.project, { token: active.token }), { code: 'PROJECT_STORAGE_CONFLICT' });
-  await assert.rejects(() => stores[1].save(createProject({ brief, mode: 'live' }), { start: true }), { code: 'VALIDATION_RUN_STOPPED' });
+  await assert.rejects(() => stores[0].reserve(recovered, active.token, { id: randomUUID(), kind: 'model' }), { code: 'PROJECT_STORAGE_CONFLICT' });
+  const unrelated = await stores[1].save(createProject({ brief, mode: 'live' }), { start: true });
+  assert.equal(unrelated.project.runtime.runs[0].status, 'running');
   const call = await serve(t, createFunctionHandler({ env, store: stores[0], runtimeFactory: async () => { throw new Error('GET must never replay'); } }));
   assert.equal((await call('GET', `/api/projects/${active.project.id}`)).body.project.status.phase, 'interrupted');
   assert.equal((await pools[0].query('SELECT * FROM art_http_attempts')).rowCount, 1);
@@ -402,8 +429,8 @@ sqlTest('a real SQL result-save fault keeps an unknown charged attempt and block
   assert.equal((await pools[0].query('SELECT * FROM art_http_attempts')).rowCount, 1);
 });
 
-sqlTest('Qloo-only exhaustion preserves bounded model closing requests and shared balances survive a fresh instance', async t => {
-  const { stores } = await fixture(t, { ART_MODEL_HTTP_LIMIT: '3', ART_QLOO_HTTP_LIMIT: '0' });
+sqlTest('Qloo-only exhaustion preserves bounded model closing requests and stays scoped to its project', async t => {
+  const { stores } = await fixture(t, { ART_MODEL_HTTP_LIMIT: '3', ART_QLOO_HTTP_LIMIT: '0', ART_SHARED_MODEL_HTTP_LIMIT: '3' });
   const active = await stores[0].save(createProject({ brief, mode: 'live' }), { start: true });
   bindDatabaseBudget(active.project, stores[0], active.token, undefined, active.usage);
   active.project.runtime.queryStopped = true;
@@ -417,7 +444,7 @@ sqlTest('Qloo-only exhaustion preserves bounded model closing requests and share
   const next = await stores[1].save(createProject({ brief, mode: 'live' }), { start: true });
   bindDatabaseBudget(next.project, stores[1], next.token, undefined, next.usage);
   assert.equal(remainingBudget(next.project).modelHttpAttempts, 2);
-  assert.equal(remainingBudget(next.project).queryStopped, true);
+  assert.equal(remainingBudget(next.project).queryStopped, false);
   await withHttpBudget(next.project, 'model', 'https://model.invalid', () => fake('https://model.invalid/close'));
   assert.equal(sends, 2);
 });

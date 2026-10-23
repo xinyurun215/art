@@ -171,12 +171,13 @@ export function remainingBudget(project) {
   const caseRemaining = {}, sharedRemaining = {};
   for (const key of Object.keys(LIMITS)) {
     caseRemaining[key] = Math.max(0, limits[key] - project.usage[key]);
-    sharedRemaining[key] = Math.max(0, sharedLimits[key] - (projectBudgets.get(project)?.budget.store
+    sharedRemaining[key] = sharedLimits[key] === null ? null : Math.max(0, sharedLimits[key] - (projectBudgets.get(project)?.budget.store
       ? projectBudgets.get(project).budget.usage[key] ?? 0 : serverUsage[key]));
   }
+  const both = key => sharedRemaining[key] === null ? caseRemaining[key] : Math.min(caseRemaining[key], sharedRemaining[key]);
   const queryStopped = Boolean(project.runtime.queryStopped || (project.mode === 'live' && validationRun.queryStopped));
-  return { modelHttpAttempts: Math.min(caseRemaining.modelHttpAttempts, sharedRemaining.modelHttpAttempts),
-    qlooHttpAttempts: queryStopped ? 0 : Math.min(caseRemaining.qlooHttpAttempts, sharedRemaining.qlooHttpAttempts),
+  return { modelHttpAttempts: both('modelHttpAttempts'),
+    qlooHttpAttempts: queryStopped ? 0 : both('qlooHttpAttempts'),
     caseRemaining, sharedRemaining, caseLimits: limits, sharedLimits, queryStopped };
 }
 

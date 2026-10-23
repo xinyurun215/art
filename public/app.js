@@ -102,8 +102,13 @@
     document.querySelectorAll('[data-select-concept]').forEach((button) => {
       button.disabled = busy || Boolean(pending && pending.targetConceptId !== button.dataset.selectConcept);
     });
+    const lockedFields = list(state.project?.lockedFields);
     document.querySelectorAll('[data-revision-decision]').forEach((button) => {
-      button.disabled = busy || (button.dataset.revisionDecision === 'accept' && (pending?.baseVersion !== state.project?.version || pending?.targetConceptId !== selected?.id));
+      button.disabled = busy || (button.dataset.revisionDecision === 'accept' && (pending?.baseVersion !== state.project?.version || pending?.targetConceptId !== selected?.id
+        || list(pending?.changes).some((change) => lockedFields.includes(change.field))));
+    });
+    document.querySelectorAll('[data-lock-field]').forEach((button) => {
+      button.disabled = busy || state.project?.revisionRequest?.status === 'running';
     });
     const feedbackText = $('pending-feedback-text');
     if (feedbackText) {
@@ -114,6 +119,8 @@
       $('submit-pending-feedback').firstElementChild.textContent = busy ? '正在按反馈修订…' : '提交反馈并修订待审稿';
       $('pending-feedback-form').setAttribute('aria-busy', String(busy));
     }
+    $('export-proposal').hidden = !list(state.project?.concepts).length;
+    $('export-proposal').disabled = busy;
     $('proposal-board').setAttribute('aria-busy', String(busy));
     $('create-note').textContent = state.project ? '此处会新建独立项目；回答追问请使用下方对话。' : '输入会作为客户提供信息保留，未经独立核实。';
   }
@@ -360,6 +367,10 @@
     $('revision-form').hidden = Boolean(pending);
     $('confirmed-version').textContent = `已确认 v${project.version}`;
     $('revision-selection').textContent = selected ? `${conceptLetter(project, selected.id)} · ${selected.title}` : '先选回待审修改所属的概念，再接受修改。';
+    const locked = list(project.lockedFields);
+    const lockedChanges = list(pending?.changes).filter((change) => locked.includes(change.field));
+    $('lock-panel').hidden = !selected;
+    $('lock-panel').innerHTML = selected ? `<p class="field-label">锁定已确认内容</p><div class="lock-fields">${Object.entries(revisionFields).map(([field, label]) => `<button type="button" class="lock-field${locked.includes(field) ? ' locked' : ''}" data-lock-field="${esc(field)}" aria-pressed="${locked.includes(field)}">${locked.includes(field) ? '已锁定 · ' : ''}${esc(label)}</button>`).join('')}</div><p class="form-note">锁定后，修改提案与接受都不能改动该字段；解锁只允许后续提出修改，不等于批准修改。</p>` : '';
     $('offline-revision-controls').hidden = project.mode !== 'offline';
     if (state.draftConceptId !== project.selectedConceptId) {
       state.draftConceptId = project.selectedConceptId;
@@ -396,7 +407,8 @@
       <div class="pending-header"><div><p class="eyebrow">${conceptLetter(project, pending.targetConceptId)} · 基于确认版 v${esc(pending.baseVersion)}</p><h4 id="pending-heading">待审修改 · 第 ${esc(pendingNumber)} 稿</h4></div><span class="evidence-badge">尚未写入确认版</span></div>
       ${pending.synthetic || project.mode === 'offline' ? '<p class="fixture-disclaimer">离线固定测试提案：用于验证流程，不代表模型理解了这段反馈，也不证明方案可行。</p>' : ''}
       <p class="pending-summary">${display(pending.summary)}</p>
-      <div class="change-summary"><span>本稿涉及</span>${list(pending.changes).map((change) => `<span class="change-field">${esc(revisionFields[change.field] || change.field)}</span>`).join('')}<strong>确认版 v${esc(project.version)} 保持不变</strong></div>
+      <div class="change-summary"><span>本稿涉及</span>${list(pending.changes).map((change) => `<span class="change-field${locked.includes(change.field) ? ' locked' : ''}">${locked.includes(change.field) ? '已锁定 · ' : ''}${esc(revisionFields[change.field] || change.field)}</span>`).join('')}<strong>确认版 v${esc(project.version)} 保持不变</strong></div>
+      ${lockedChanges.length ? `<p class="revision-feedback conflict">本稿改动了已锁定的${lockedChanges.map((change) => esc(revisionFields[change.field] || change.field)).join('、')}。若要接受，需先在上方明确解锁；也可以拒绝，保留确认版。</p>` : ''}
       <div class="review-actions"><button type="button" class="accept-revision" data-revision-decision="accept" data-revision-id="${esc(pending.id)}">接受第 ${esc(pendingNumber)} 稿，更新确认版</button><button type="button" class="reject-revision" data-revision-decision="reject" data-revision-id="${esc(pending.id)}">拒绝，保留确认版</button></div>
       <p class="pending-request"><span>你的修改要求</span>${display(pending.request)}</p>
       <details class="review-comparison" data-key="review-comparison-${esc(pending.id)}"><summary><strong>查看修改前后对照与影响</strong><span>${list(pending.changes).length} 项修改 · ${list(pending.impact).length} 项影响 · ${list(pending.unknowns).length} 项未知</span></summary><div class="comparison-body">
@@ -418,6 +430,44 @@
     $('revision-history').hidden = revisions.length === 0;
     $('revision-count').textContent = String(revisions.length);
     $('revision-records').innerHTML = [...revisions].reverse().map((revision) => `<article class="revision-record"><p><strong>${esc({ pending: '待审', accepted: '已接受', rejected: '已拒绝', superseded: '已被后续稿替代' }[revision.status] || revision.status)}</strong> · 第 ${esc(revision.revisionNumber || 1)} 稿 · ${conceptLetter(project, revision.targetConceptId)} · 基于 v${esc(revision.baseVersion)}${revision.confirmedVersion ? ` → v${esc(revision.confirmedVersion)}` : ''}</p><p>${display(revision.summary)}</p>${revision.parentRevisionId ? '<p>由上份待审稿按反馈修订，未自动批准。</p>' : ''}<details class="evidence-detail" data-key="history-${esc(revision.id)}"><summary>查看当时的修改与依据</summary><p class="form-note">以下为当时记录；接受修改不代表影响已实测或未知已解决。</p>${revisionBoundariesMarkup(revision)}${revisionDiffMarkup(project, revision.changes, `history-${revision.id}`, `当时确认版 v${revision.baseVersion}`, `当时待审第 ${revision.revisionNumber || 1} 稿`)}<details class="evidence-detail" data-key="history-raw-${esc(revision.id)}"><summary>查看完整修订记录（原始 JSON）</summary><pre class="raw-record">${esc(asText(revision))}</pre></details></details></article>`).join('') + (feedbackRecords.length ? `<h5 class="feedback-history-title">待审稿反馈记录</h5>${[...feedbackRecords].reverse().map((record) => `<article class="revision-record"><p><strong>${esc({ running: '正在修订', completed: '已生成新待审稿', error: '反馈处理失败', needs_input: '需要补充条件', conflict: '存在冲突', interrupted: '处理已中断' }[record.status] || record.status)}</strong> · 针对第 ${esc(record.sourceRevisionNumber || revisions.find((revision) => revision.id === record.sourceRevisionId)?.revisionNumber || 1)} 稿</p><p>你的反馈：${display(record.text)}</p>${record.detail || record.question ? `<p>${display(record.question || record.detail)}</p>` : ''}<details class="evidence-detail" data-key="feedback-history-${esc(record.id)}"><summary>查看反馈与修订标识符</summary><pre class="raw-record">${esc(asText(record))}</pre></details></article>`).join('')}` : '');
+  }
+
+  // Exports confirmed content, pending drafts and evidence summaries; raw provider responses stay out.
+  function proposalMarkdown(project) {
+    const line = (value) => (value === null || value === undefined || value === '' ? '未知'
+      : typeof value === 'object' ? JSON.stringify(value) : String(value)).replace(/\s+/g, ' ').trim();
+    const items = (values, empty = '无') => list(values).length ? list(values).map((value) => `- ${line(value)}`).join('\n') : `- ${empty}`;
+    const joined = (values, empty = '未知') => list(values).map(line).join('；') || empty;
+    const entity = (item) => `${line(item.name)}（${line(item.id ?? item.entity_id ?? item.entityId)}${item.type ? ` · ${line(item.type)}` : ''}）`;
+    const brief = project.brief || {};
+    const locked = list(project.lockedFields);
+    const pending = pendingRevision(project);
+    const status = { pending: '待审', accepted: '已接受', rejected: '已拒绝', superseded: '已被后续稿替代' };
+    const sections = [
+      `# ${line(brief.brand || '品牌快闪')} · 早期体验提案包`,
+      `- 项目：${line(project.id)}\n- 已确认版本：v${line(project.version)}\n- 运行方式：${project.mode === 'offline' ? '离线模拟与合成夹具，不代表真实模型或 Qloo 结果' : '真实模型与 Qloo'}\n- 导出时间：${new Date().toISOString()}\n- 性质：早期体验提案，不是施工方案；不保证预算、场地安全、版权或活动效果。`,
+      `## 需求与限制（客户提供，未经独立核实）\n- 原始需求：${line(brief.request)}\n- 品牌 / 产品：${line(brief.brand)}\n- 活动目标：${line(brief.goal)}\n- 文化参考（待研究信号，不是受众画像）：${joined(brief.references)}\n- 城市 / 场地：${line(brief.venue)}\n- 预算：${line(brief.budget)}\n- 必须保留：${joined(brief.mustKeep, '无')}\n- 禁止 / 避免：${joined(brief.avoid, '无')}`,
+    ];
+    if (list(project.clarifications).length) sections.push(`## 澄清记录\n${project.clarifications.map((record) => `- 问：${line(record.question)}\n  答：${line(record.answer)}`).join('\n')}`);
+    sections.push(`## 开放问题\n${items(list(project.questions).map((question) => typeof question === 'string' ? question : question.text))}`);
+    list(project.concepts).forEach((concept, index) => {
+      const selected = concept.id === project.selectedConceptId;
+      sections.push([`## 概念 ${String.fromCharCode(65 + index)} · ${line(concept.title)}${selected ? '（已选）' : ''}`,
+        selected && locked.length ? `锁定字段：${locked.map((field) => revisionFields[field] || field).join('、')}` : '',
+        `**核心主张**：${line(concept.coreClaim)}`,
+        `**参与机制**（${line(concept.mechanism?.organization)}）：${line(concept.mechanism?.description)}`,
+        `**体验旅程**\n${list(concept.journey).map((step) => `- ${line(step.stage)}：${line(step.action)}`).join('\n') || '- 未知'}`,
+        `**产品接触点**\n${items(concept.productTouchpoints)}`,
+        `**文化依据与设计推断**\n${list(concept.evidenceLinks).map((link) => `- 数据事实：${line(link.observation)}（证据 ${line(link.evidenceId)} · 实体 ${line(link.entityId)} · 字段 ${line(link.observedField)}）\n  设计推断：${line(link.inspiration)}`).join('\n') || '- 证据不足'}`,
+        `**开放问题 / 风险**\n${items(concept.openQuestions)}`,
+        `**未验证效果**\n${items(concept.unverifiedEffects)}`].filter(Boolean).join('\n\n'));
+    });
+    if (pending) sections.push(`## 待审修改（尚未写入确认版）\n- 第 ${line(pending.revisionNumber || 1)} 稿 · ${conceptLetter(project, pending.targetConceptId)} · 基于 v${line(pending.baseVersion)}\n- 修改要求：${line(pending.request)}\n- 说明：${line(pending.summary)}\n- 涉及字段：${list(pending.changes).map((change) => revisionFields[change.field] || change.field).join('、')}\n- 仍然未知：\n${list(pending.unknowns).map((item) => `  - ${line(item)}`).join('\n') || '  - 未记录'}`);
+    sections.push(`## 版本记录\n${[...list(project.versionHistory).map((record) => `- v${line(record.version)} 确认于 ${line(record.confirmedAt)}${record.revisionId ? '，由已接受修改生成' : ''}`),
+      ...list(project.revisions).map((revision) => `- 第 ${line(revision.revisionNumber || 1)} 稿：${status[revision.status] || line(revision.status)}${revision.confirmedVersion ? ` → v${revision.confirmedVersion}` : ''} · ${line(revision.summary)}`)].join('\n') || '- 无'}`);
+    sections.push(`## 文化证据\n${list(project.evidence).map((item, index) => `### 证据 ${index + 1}${item.synthetic ? '（合成夹具，非真实证据）' : ''}\n- 证据标识：${line(item.id)}\n- 查询问题：${line(item.query?.designQuestion)}\n- 实际输入实体：${list(item.inputReferences).map(entity).join('；') || '未知'}\n- 返回实体：${list(item.returnedEntities).map(entity).join('；') || '未知'}\n- 来源：${line(item.source)}\n- 安全请求引用：${line(item.requestRef)}\n- 查询时间：${line(item.queriedAt)}\n- 适用边界：${line(item.boundary)}`).join('\n\n') || '尚无证据'}`);
+    sections.push('## 使用边界\n- 文化亲和关联只表示本次请求中的文化关联，不是审美评分、方案质量或效果预测。\n- 本文件不包含 Qloo 原始响应。');
+    return `${sections.join('\n\n')}\n`;
   }
 
   function renderProject(project) {
@@ -547,6 +597,20 @@
     projectAction('/select', { conceptId: button.dataset.selectConcept, baseVersion: state.project.version }, '未能选择概念', () => {
       window.setTimeout(() => { $('revision-workspace').scrollIntoView({ block: 'start' }); $('revision-text').focus({ preventScroll: true }); }, 0);
     });
+  });
+  $('export-proposal').addEventListener('click', () => {
+    if (!state.project) return;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([proposalMarkdown(state.project)], { type: 'text/markdown;charset=utf-8' }));
+    link.download = `art-proposal-${state.project.id.slice(0, 8)}-v${state.project.version}.md`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  });
+  $('lock-panel').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-lock-field]');
+    if (!button || button.disabled || !state.project) return;
+    projectAction('/locks', { baseVersion: state.project.version, field: button.dataset.lockField,
+      locked: button.getAttribute('aria-pressed') !== 'true' }, '锁定状态未更新');
   });
   $('revision-form').addEventListener('submit', (event) => {
     event.preventDefault();

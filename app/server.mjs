@@ -5,7 +5,7 @@ import { timingSafeEqual, randomBytes, createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createProject, action, configStatus, answerClarification, selectConcept, beginRevision, beginPendingFeedback,
+import { createProject, action, configStatus, answerClarification, selectConcept, setFieldLock, beginRevision, beginPendingFeedback,
   finishRevisionRequest, decideRevision } from './state.mjs';
 import { createProductRuntime } from './runtime.mjs';
 import { createHttpBudget, bindDatabaseBudget, validationRun, stopLiveRun, safeRuntimeFailure } from './transport.mjs';
@@ -234,10 +234,10 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
         const saved = await schedule(project, project.brief.request);
         return json(response, store ? 200 : 202, { project: store ? publicProject(saved) : project });
       }
-      const match = /^\/api\/projects\/([^/]+)(?:\/(messages|select|revisions)(?:\/([^/]+)\/(accept|reject|feedback))?)?$/.exec(url.pathname);
+      const match = /^\/api\/projects\/([^/]+)(?:\/(messages|select|locks|revisions)(?:\/([^/]+)\/(accept|reject|feedback))?)?$/.exec(url.pathname);
       if (match) {
         let project = await loadProject(match[1], owner());
-        if (!project) return json(response, 404, { error: '项目不存在；请检查当前本地项目存储。' });
+        if (!project) return json(response, 404, { error: judge ? '项目不存在，或不是在当前浏览器中创建的。' : '项目不存在；请检查当前本地项目存储。' });
         if (request.method === 'GET' && !match[2]) return json(response, 200, { project: store ? publicProject(project) : project });
         if (request.method === 'POST' && match[2]) {
           const input = await body(request);
@@ -246,8 +246,8 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
           if (!project) return json(response, 404, { error: '项目不存在；请检查当前浏览器的项目。' });
           if (project.status.phase === 'busy') return json(response, 409, { error: '当前任务仍在处理，请稍后补充。', code: 'PROJECT_BUSY' });
           project = structuredClone(project);
-          if (match[2] === 'select' && !match[3]) {
-            selectConcept(project, input); project = await saveProject(project);
+          if (['select', 'locks'].includes(match[2]) && !match[3]) {
+            (match[2] === 'select' ? selectConcept : setFieldLock)(project, input); project = await saveProject(project);
             return json(response, 200, { project: store ? publicProject(project) : project });
           }
           if (match[2] === 'revisions' && match[3] && match[4] !== 'feedback') {

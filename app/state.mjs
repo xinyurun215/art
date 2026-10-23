@@ -188,9 +188,29 @@ export function selectConcept(project, input) {
   revisionEnsure(project.concepts.some(concept => concept.id === input.conceptId), '目标概念不存在', '/conceptId', 'TARGET_NOT_FOUND');
   revisionEnsure(project.selectedConceptId === input.conceptId || !project.revisions?.some(record => record.status === 'pending'),
     '请先接受或拒绝当前待审修改，再切换概念', '/conceptId', 'PENDING_SELECTION_LOCKED');
+  revisionEnsure(project.selectedConceptId === input.conceptId || !project.lockedFields?.length,
+    '已选概念存在锁定内容；请先明确解锁，再切换概念', '/conceptId', 'PENDING_SELECTION_LOCKED');
   project.selectedConceptId = input.conceptId;
   project.revisions ??= [];
   rememberVersion(project);
+  return project;
+}
+// Locks bind fields of the selected concept. Unlocking only permits later proposals; it approves nothing.
+export function setFieldLock(project, input) {
+  revisionEnsure(exactKeys(input, ['baseVersion', 'field', 'locked']) && typeof input.locked === 'boolean',
+    '锁定操作只能指定正式版本、字段与锁定状态');
+  revisionEnsure(input.baseVersion === project.version, '基础版本已过期；请刷新正式版本', '/baseVersion', 'STALE_PROJECT_VERSION');
+  revisionEnsure(project.selectedConceptId, '请先选择概念，再锁定已确认内容', '/field');
+  revisionEnsure(REVISION_FIELDS.includes(input.field), '该字段不能锁定', '/field');
+  revisionEnsure(project.revisionRequest?.status !== 'running', '当前修改请求仍在处理，不能改变锁定', '/', 'REVISION_IN_PROGRESS');
+  const locked = new Set(project.lockedFields ?? []);
+  if (locked.has(input.field) === input.locked) return project;
+  if (input.locked) locked.add(input.field); else locked.delete(input.field);
+  project.lockedFields = REVISION_FIELDS.filter(field => locked.has(field));
+  const name = { title: '概念名称', coreClaim: '核心主张', mechanism: '参与机制', journey: '体验旅程', productTouchpoints: '产品接触点',
+    evidenceLinks: '文化依据与设计推断', openQuestions: '开放问题', unverifiedEffects: '未验证效果' }[input.field];
+  action(project, 'lock', input.locked ? `锁定 ${name}` : `解锁 ${name}`,
+    input.locked ? '修改提案与接受均不得改动该字段。' : '解锁只允许后续提出修改，不等于批准修改。');
   return project;
 }
 export function beginRevision(project, input) {

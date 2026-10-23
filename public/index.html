@@ -72,7 +72,7 @@
     </aside>
 
     <section class="proposal-board" id="proposal-board" aria-labelledby="board-heading" tabindex="-1">
-      <div class="board-heading-row"><div><p class="eyebrow">PROJECT / 当前项目 · 早期体验提案</p><h2 id="board-heading">下一场体验，从这里展开。</h2><p class="board-subtitle" id="board-subtitle">把需求、文化依据和设计选择，放在同一张提案板上。</p></div><div class="version-stamp" id="version-stamp">待建立项目</div></div>
+      <div class="board-heading-row"><div><p class="eyebrow">PROJECT / 当前项目 · 早期体验提案</p><h2 id="board-heading">下一场体验，从这里展开。</h2><p class="board-subtitle" id="board-subtitle">把需求、文化依据和设计选择，放在同一张提案板上。</p></div><div><div class="version-stamp" id="version-stamp">待建立项目</div><button type="button" class="export-button" id="export-proposal" hidden>导出提案包 · Markdown</button></div></div>
       <div class="project-status" id="project-status" role="status" aria-live="polite"><div class="status-overview"><span class="phase-mark" aria-hidden="true"></span><div class="status-copy"><strong>工作台已就绪</strong><p>写下需求，研究证据与两个不同的参与机制会出现在这里。</p></div></div></div>
       <div id="project-context"></div>
       <section id="questions-panel" class="questions-panel" aria-labelledby="questions-heading" hidden></section>
@@ -85,6 +85,7 @@
       <section class="revision-section" id="revision-workspace" aria-labelledby="revision-heading" hidden>
         <div class="board-section-heading"><div><p class="eyebrow">保留确认内容 · 逐次审查</p><h3 id="revision-heading">继续这个概念</h3></div><span class="section-count" id="confirmed-version"></span></div>
         <p class="revision-selection" id="revision-selection"></p>
+        <div class="lock-panel" id="lock-panel" hidden></div>
         <form id="revision-form">
           <label class="field-label" for="revision-text">希望怎么改</label>
           <textarea id="revision-text" rows="3" aria-describedby="revision-note" placeholder="说明希望调整的内容、原因，以及需要保留的部分。"></textarea>

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
-import { LIMITS, SERVER_LIMITS, finishRevisionRequest } from './state.mjs';
+import { LIMITS, finishRevisionRequest } from './state.mjs';
 
 const failure = (code, message, statusCode = 503) => Object.assign(new Error(message), { code, statusCode });
 const conflict = () => failure('PROJECT_STORAGE_CONFLICT', '项目已变化或执行许可已失效；请重新读取，未覆盖已保存内容。', 409);
@@ -13,17 +13,18 @@ export function interruptProject(project, detail) {
   if (run?.status === 'running') Object.assign(run, { status: 'interrupted', finishedAt: new Date().toISOString() });
 }
 
-// One database run owns the demo-wide cap and one execution lease. No queue or replay.
+// Leases, stops and caps are per project; a deployment-wide cap applies only when ART_SHARED_* is set.
+// Usage is never reset; changed limits take effect against the recorded usage. No queue or replay.
 export function createPostgresStore({ connectionString, pool = new pg.Pool({ connectionString, max: 2,
   connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 }), runId = 'protected-preview-v1', env = {} } = {}) {
-  const names = ['ART_MODEL_HTTP_LIMIT', 'ART_QLOO_HTTP_LIMIT'];
-  const limits = Object.fromEntries(keys.map((key, index) => {
-    const value = env[names[index]] === undefined ? LIMITS[key] : Number(env[names[index]]);
-    if (!Number.isSafeInteger(value) || value < 0 || String(env[names[index]] ?? value).trim() === '')
+  const configured = (names, fallback) => Object.fromEntries(keys.map((key, index) => {
+    const value = env[names[index]] === undefined ? fallback[key] : Number(env[names[index]]);
+    if (value !== null && (!Number.isSafeInteger(value) || value < 0 || String(env[names[index]] ?? value).trim() === ''))
       throw failure('HTTP_BUDGET_CONFIG_INVALID', 'HTTP 预算配置无效；未启用请求。');
     return [key, value];
   }));
-  const sharedLimits = names.some(name => env[name] !== undefined) ? { ...limits } : { ...SERVER_LIMITS };
+  const limits = configured(['ART_MODEL_HTTP_LIMIT', 'ART_QLOO_HTTP_LIMIT'], LIMITS);
+  const sharedLimits = configured(['ART_SHARED_MODEL_HTTP_LIMIT', 'ART_SHARED_QLOO_HTTP_LIMIT'], { modelHttpAttempts: null, qlooHttpAttempts: null });
   async function transaction(operation) {
     let client;
     try {
@@ -33,7 +34,7 @@ export function createPostgresStore({ connectionString, pool = new pg.Pool({ con
         [runId, limits, sharedLimits]);
       const run = (await client.query('SELECT * FROM art_budget_runs WHERE id=$1 FOR UPDATE', [runId])).rows[0];
       if (keys.some(key => run.limits[key] !== limits[key] || run.shared_limits[key] !== sharedLimits[key]))
-        throw failure('HTTP_BUDGET_CONFIG_INVALID', '共享预算与已保存配置不同；不能重置或扩大额度。');
+        await client.query('UPDATE art_budget_runs SET limits=$2,shared_limits=$3 WHERE id=$1', [runId, limits, sharedLimits]);
       const value = await operation(client, run);
       await client.query('COMMIT');
       return value;
@@ -61,17 +62,10 @@ export function createPostgresStore({ connectionString, pool = new pg.Pool({ con
       WHERE id=$1 AND run_id=$2 AND revision=$7`, [...parameters, project.storageVersion])).rowCount) throw conflict();
     return next;
   }
-  async function stopped(client, project) {
-    if (project.mode !== 'live') return;
-    await client.query(`UPDATE art_budget_runs SET live_stopped=live_stopped OR $2,query_stopped=query_stopped OR $3 WHERE id=$1`,
-      [runId, Boolean(project.runtime.infrastructureStopped || (project.runtime.failure && project.runtime.failure.kind !== 'qloo')
-        || (project.runtime.localFailure && project.runtime.localFailure.kind !== 'qloo') || project.status.phase === 'interrupted'),
-      Boolean(project.runtime.queryStopped || project.runtime.failure?.kind === 'qloo' || project.runtime.localFailure?.kind === 'qloo')]);
-  }
   return { limits, sharedLimits,
     async get(id, { guestOwner } = {}) {
       if (guestOwner === null) return null;
-      return transaction(async (client, run) => {
+      return transaction(async client => {
         const row = await rowFor(client, id);
         if (!row) return null;
         if (guestOwner !== undefined && row.state.guestOwner !== guestOwner) return null;
@@ -80,10 +74,7 @@ export function createPostgresStore({ connectionString, pool = new pg.Pool({ con
         if (row.state.runtime.httpAttempts) row.state.runtime.httpAttempts = row.state.runtime.httpAttempts.map(attempt => confirmed.get(attempt.id) ?? attempt);
         if (row.lease_token && new Date(row.lease_until) <= new Date()) {
           interruptProject(row.state, '执行许可已过期，上一轮可能被平台中断；已预留请求不退款、不自动重复。');
-          const next = await write(client, row.state, null);
-          await stopped(client, next);
-          if (run.lease_token === row.lease_token) await client.query('UPDATE art_budget_runs SET lease_token=NULL,lease_project=NULL,lease_until=NULL WHERE id=$1', [runId]);
-          return next;
+          return write(client, row.state, null);
         }
         return row.state;
       });
@@ -94,43 +85,36 @@ export function createPostgresStore({ connectionString, pool = new pg.Pool({ con
         if (project.storageVersion === undefined) { if (row) throw conflict(); }
         else current(row, project);
         if (start) {
-          if (run.lease_token && new Date(run.lease_until) <= new Date())
+          if (row?.lease_token && new Date(row.lease_until) <= new Date())
             throw failure('RUN_RECOVERY_REQUIRED', '上一轮执行许可已过期；请先读取原项目核对中断状态和请求账本，未启动新轮次。', 409);
-          if (row?.lease_token || (run.lease_token && new Date(run.lease_until) > new Date()))
-            throw failure('RUNTIME_BUSY', '已有任务执行中；没有将本请求加入后台队列。', 409);
-          if (project.mode === 'live' && run.live_stopped) throw failure('VALIDATION_RUN_STOPPED', '共享真实运行已停止；没有发出请求。', 409);
+          if (row?.lease_token) throw failure('RUNTIME_BUSY', '本项目已有任务执行中；没有将本请求加入后台队列。', 409);
           token = randomUUID();
           const deadline = new Date(Date.now() + leaseMs);
           const candidate = structuredClone(project);
-          if (candidate.mode === 'live' && run.query_stopped) candidate.runtime.queryStopped = true;
           (candidate.runtime.runs ??= []).push({ id: token, status: 'running', startedAt: new Date().toISOString(), deadline: deadline.toISOString() });
-          await client.query('UPDATE art_budget_runs SET lease_token=$2,lease_project=$3,lease_until=$4 WHERE id=$1', [runId, token, project.id, deadline]);
           return { project: await write(client, candidate, token, deadline), token, usage: run.usage };
         }
         if ((row?.lease_token ?? null) !== token || (token && new Date(row.lease_until) <= new Date())) throw conflict();
-        await stopped(client, project);
-        const next = await write(client, project, null);
-        if (token) await client.query('UPDATE art_budget_runs SET lease_token=NULL,lease_project=NULL,lease_until=NULL WHERE id=$1 AND lease_token=$2', [runId, token]);
-        return next;
+        return write(client, project, null);
       });
     },
     async reserve(project, token, detail) {
       return transaction(async (client, run) => {
         const row = await rowFor(client, project.id);
         current(row, project);
-        if (row.lease_token !== token || run.lease_token !== token || new Date(row.lease_until) <= new Date()) throw conflict();
+        if (row.lease_token !== token || new Date(row.lease_until) <= new Date()) throw conflict();
         const key = detail.kind === 'model' ? 'modelHttpAttempts' : 'qlooHttpAttempts';
-        if (run.live_stopped || project.runtime.infrastructureStopped || (project.runtime.failure && project.runtime.failure.kind !== 'qloo') || project.status.phase === 'interrupted'
-          || (detail.kind === 'qloo' && (run.query_stopped || project.runtime.queryStopped)))
-          throw failure('VALIDATION_RUN_STOPPED', '共享真实运行已停止；没有发出请求。', 409);
-        if (row.state.usage[key] >= limits[key] || run.usage[key] >= sharedLimits[key])
+        if (project.runtime.infrastructureStopped || (project.runtime.failure && project.runtime.failure.kind !== 'qloo') || project.status.phase === 'interrupted'
+          || (detail.kind === 'qloo' && project.runtime.queryStopped))
+          throw failure('VALIDATION_RUN_STOPPED', '本项目真实运行已停止；没有发出请求。', 409);
+        if (row.state.usage[key] >= limits[key] || (sharedLimits[key] !== null && run.usage[key] >= sharedLimits[key]))
           throw failure('HTTP_BUDGET_EXHAUSTED', '共享或项目 HTTP 总额度已用尽；没有发出请求。', 409);
         if ((await client.query('SELECT id FROM art_http_attempts WHERE id=$1', [detail.id])).rowCount) throw conflict();
         const next = structuredClone(project);
         next.usage[key] = row.state.usage[key] + 1;
         (next.runtime.httpAttempts ??= []).push(detail);
         const usage = { ...run.usage, [key]: run.usage[key] + 1 };
-        await client.query('UPDATE art_budget_runs SET usage=$2,query_stopped=query_stopped OR $3 WHERE id=$1', [runId, usage, Boolean(project.runtime.queryStopped)]);
+        await client.query('UPDATE art_budget_runs SET usage=$2 WHERE id=$1', [runId, usage]);
         await client.query('INSERT INTO art_http_attempts(id,run_id,project_id,run_token,kind,detail) VALUES($1,$2,$3,$4,$5,$6)',
           [detail.id, runId, project.id, token, detail.kind, detail]);
         return { project: await write(client, next, token, row.lease_until), usage };
