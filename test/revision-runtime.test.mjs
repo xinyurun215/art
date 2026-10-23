@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createProject, selectConcept, beginRevision, applyProposal } from '../app/state.mjs';
-import { createProductRuntime, REVISION_TOOL_NAMES } from '../app/runtime.mjs';
+import { createProductRuntime, offlineDecision, REVISION_TOOL_NAMES } from '../app/runtime.mjs';
 import { createAppServer } from '../app/server.mjs';
 
 function fixtureProject() {
@@ -198,5 +198,110 @@ test('HTTP selected target, concurrent accepts, reject and restart restore confi
     assert.equal(dirname(resolve(dataDir)), resolve(tmpdir()));
     assert(dataDir.startsWith(join(tmpdir(), 'art-revision-')));
     rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('HTTP content rejection can be corrected by the model or a user message, then reviewed and restored', async t => {
+  let externalAttempts = 0;
+  t.mock.method(globalThis, 'fetch', () => { externalAttempts++; throw new Error('OFFLINE_TEST_ONLY'); });
+  for (const continuation of ['model', 'user']) {
+    const dataDir = mkdtempSync(join(tmpdir(), 'art-content-recovery-'));
+    let candidate, rejectedFeedback, correctionRead = false;
+    const runtimeOptions = { memorySession: true, runtimeRoot: join(dataDir, 'runtime'), decide(context, snapshot) {
+      if (snapshot.revisionRequest?.status === 'running') return [{ type: 'toolCall',
+        id: snapshot.revisionRequest.id, name: 'propose_concept_revision', arguments: {
+          phase: 'pending', summary: '合成测试：按用户意见仅修改标题',
+          changes: [{ field: 'title', after: snapshot.revisionRequest.text, reason: '本地审查流程测试', evidenceRefs: [] }],
+          impact: ['仅修改所选概念的标题'], unknowns: ['实际效果未经验证'],
+        } }];
+      const userIndex = context.messages.findLastIndex(message => message.role === 'user');
+      const result = context.messages.slice(userIndex + 1).findLast(message => message.role === 'toolResult'
+        && message.toolName === 'propose_design_response');
+      if (result) {
+        rejectedFeedback = JSON.parse(result.content[0].text).feedback;
+        assert.equal(rejectedFeedback.code, 'FORBIDDEN_ITEM_PRESENT');
+        assert.equal(rejectedFeedback.path, '/concepts/1/journey/2/action');
+        assert.equal(rejectedFeedback.correctable, true);
+        assert.equal(snapshot.version, 1); assert.equal(snapshot.concepts.length, 0);
+        if (continuation === 'user') return [{ type: 'text', text: '合成测试暂停；请补充纠正意见。' }];
+      }
+      if (candidate) {
+        correctionRead = true;
+        assert.equal(snapshot.previousFeedback.code, 'FORBIDDEN_ITEM_PRESENT');
+        assert.equal(snapshot.previousFeedback.path, rejectedFeedback.path);
+        return [{ type: 'toolCall', id: 'corrected-content', name: 'propose_design_response', arguments: candidate }];
+      }
+      const parts = offlineDecision(context, snapshot);
+      const proposal = parts.find(part => part.name === 'propose_design_response');
+      if (proposal) {
+        candidate = structuredClone(proposal.arguments);
+        proposal.id = 'rejected-content';
+        proposal.arguments.concepts[1].journey[2].action = '强制购买后进行试穿';
+      }
+      return parts;
+    } };
+    let app = createAppServer({ env: {}, dataDir, runtimeOptions });
+    let port = await listen(app);
+    try {
+      const created = await local(port, 'POST', '/api/projects', { mode: 'offline', brief: {
+        request: '合成本地流程：提供两个试穿方案，禁止强制购买', venue: '合成室内场地',
+        references: ['合成音乐参考'], mustKeep: ['试穿'], avoid: ['强制购买'],
+      } });
+      assert.equal(created.status, 202);
+      const route = `/api/projects/${created.project.id}`;
+      let project = await waitProject(port, created.project.id);
+      if (continuation === 'user') {
+        assert.equal(project.status.phase, 'error'); assert.equal(project.concepts.length, 0);
+        assert.equal(project.runtime.failure, undefined); assert.equal(project.runtime.localFailure, undefined);
+        assert.equal(project.runtime.feedback.code, 'FORBIDDEN_ITEM_PRESENT');
+        const corrected = await local(port, 'POST', `${route}/messages`, { text: '删除强制购买安排，继续保存合规方案。' });
+        assert.equal(corrected.status, 202);
+        project = await waitProject(port, project.id);
+        assert.equal(project.messages.some(message => message.role === 'user' && message.text === '删除强制购买安排，继续保存合规方案。'), true);
+      }
+      assert.equal(correctionRead, true);
+      assert.equal(project.status.phase, 'ready'); assert.equal(project.version, 2);
+      assert.deepEqual(project.concepts, candidate.concepts); assert.equal(project.evidence.length, 1);
+      const rejected = project.actions.find(action => action.toolCallId === 'rejected-content');
+      assert.equal(rejected.status, 'error'); assert.deepEqual(rejected.feedback, rejectedFeedback);
+      assert.equal(project.actions.find(action => action.toolCallId === 'corrected-content').feedback.code, 'PROPOSAL_ACCEPTED');
+      const confirmed = structuredClone(project.concepts), evidence = structuredClone(project.evidence);
+      const selected = await local(port, 'POST', `${route}/select`, { conceptId: confirmed[0].id, baseVersion: project.version });
+      assert.equal(selected.status, 200); project = selected.project;
+      for (const decision of ['reject', 'accept']) {
+        const text = decision === 'reject' ? '合成待审标题一' : '合成待审标题二';
+        const requested = await local(port, 'POST', `${route}/revisions`, {
+          conceptId: project.selectedConceptId, baseVersion: project.version, text,
+        });
+        assert.equal(requested.status, 202);
+        project = await waitProject(port, project.id);
+        assert.equal(project.status.phase, 'revision_pending'); assert.equal(project.version, 2);
+        assert.deepEqual(project.concepts, confirmed); assert.deepEqual(project.evidence, evidence);
+        const pending = project.revisions.at(-1);
+        assert.equal(pending.changes[0].after, text);
+        await app.dispose(); app = createAppServer({ env: {}, dataDir, runtimeOptions }); port = await listen(app);
+        assert.deepEqual((await local(port, 'GET', route)).project, project, 'pending state survives a server restart');
+        const decided = await local(port, 'POST', `${route}/revisions/${pending.id}/${decision}`, { baseVersion: project.version });
+        assert.equal(decided.status, 200); project = decided.project;
+        assert.equal(project.revisions.at(-1).status, decision === 'reject' ? 'rejected' : 'accepted');
+        if (decision === 'reject') { assert.equal(project.version, 2); assert.deepEqual(project.concepts, confirmed); }
+        else { assert.equal(project.version, 3); assert.deepEqual(project.concepts,
+          [{ ...confirmed[0], title: text }, confirmed[1]]); }
+      }
+      await app.dispose(); app = createAppServer({ env: {}, dataDir, runtimeOptions }); port = await listen(app);
+      const restored = (await local(port, 'GET', route)).project;
+      assert.deepEqual(restored, project, 'confirmed content, selection, review history and error actions survive restart');
+      assert.deepEqual(restored.revisions.map(revision => revision.status), ['rejected', 'accepted']);
+      assert.deepEqual(restored.evidence, evidence);
+      assert.deepEqual(restored.actions.find(action => action.toolCallId === 'rejected-content'), rejected);
+      assert.equal(restored.runtime.failure, undefined); assert.equal(restored.runtime.localFailure, undefined);
+      assert.equal(restored.usage.modelHttpAttempts, 0); assert.equal(restored.usage.qlooHttpAttempts, 0);
+      assert.equal(externalAttempts, 0);
+    } finally {
+      await app.dispose();
+      assert.equal(dirname(resolve(dataDir)), resolve(tmpdir()));
+      assert(dataDir.startsWith(join(tmpdir(), 'art-content-recovery-')));
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   }
 });

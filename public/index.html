@@ -4,33 +4,37 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>品牌快闪 · 提案工作台</title>
+  <title>Art · 创意提案工作台</title>
   <link rel="stylesheet" href="/styles.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#proposal-board">跳到提案板</a>
   <header class="app-header">
-    <a class="wordmark" href="/" aria-label="品牌快闪提案工作台首页"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span><span>品牌快闪<span class="wordmark-divider">/</span>提案工作台</span></a>
+    <a class="wordmark" href="/" aria-label="Art 创意提案工作台首页"><span class="art-word">Art<span class="art-period">.</span></span><span class="wordmark-divider" aria-hidden="true">/</span><span>创意提案工作台<small>品牌快闪体验设计</small></span></a>
     <div class="header-status"><span class="status-dot" aria-hidden="true"></span><span id="header-mode">本地工作空间</span></div>
   </header>
 
   <section class="test-banner" aria-labelledby="test-label">
     <div class="test-banner-copy"><span class="banner-label" id="test-label">离线合成验收</span><span id="mode-explanation">模拟模型与夹具；不是真实 Qloo 查询，不构成客户或效果证据。</span></div>
-    <div class="test-controls">
+    <details class="runtime-settings" id="runtime-settings">
+      <summary>运行设置与说明</summary>
+      <div class="settings-body"><div class="test-controls">
       <label for="mode">新项目方式</label>
       <select id="mode" aria-describedby="config-status"><option value="offline">模拟模型与夹具</option><option value="live" disabled>真实服务 · 未配置</option></select>
       <label for="scenario">验收场景</label>
       <select id="scenario"><option value="sufficient">证据充分</option><option value="failure">查询失败</option><option value="irrelevant">结果无关</option></select>
-    </div>
+      </div><p class="config-status" id="config-status" role="status">正在读取服务配置…</p></div>
+    </details>
   </section>
-  <p class="config-status" id="config-status" role="status">正在读取服务配置…</p>
   <div id="connection-error" class="connection-error" role="alert" hidden></div>
 
   <main class="workspace">
     <aside class="project-rail" aria-label="需求与智能体对话">
       <section class="rail-section brief-section" aria-labelledby="brief-heading">
-        <div class="section-heading"><h1 id="brief-heading">从一份需求开始</h1><span class="eyebrow">项目输入</span></div>
+        <details class="brief-disclosure" id="brief-disclosure" open>
+        <summary><span class="rail-add" aria-hidden="true">＋</span><span><strong id="brief-heading">从一份需求开始</strong><small>新建独立项目</small></span></summary>
+        <div class="brief-disclosure-body">
         <p class="section-description">先写已知的。影响下一步的缺口，智能体会继续追问。</p>
         <div class="demo-controls"><span>合成案例</span><button type="button" class="text-button" id="load-demo">完整示例</button><span class="demo-separator" aria-hidden="true">/</span><button type="button" class="text-button" id="load-ambiguous">待澄清示例</button></div>
         <form id="brief-form">
@@ -51,10 +55,12 @@
           <button class="primary-button" id="create-project" type="submit"><span>开始研究</span><span aria-hidden="true">↗</span></button>
           <p class="form-note" id="create-note">输入会作为客户提供信息保留，未经独立核实。</p>
         </form>
+        </div></details>
       </section>
 
       <section class="rail-section conversation-section" aria-labelledby="conversation-heading">
-        <div class="section-heading"><h2 id="conversation-heading">与智能体继续</h2><span class="eyebrow" id="session-label">尚未开始</span></div>
+        <div class="section-heading"><h2 id="conversation-heading">项目对话</h2><span class="eyebrow" id="session-label">尚未开始</span></div>
+        <p class="section-description">补充条件，讨论选择。成果保留在右侧提案板。</p>
         <div class="conversation-log" id="messages" role="log" aria-label="项目对话" aria-live="polite"><p class="empty-chat">补充条件、回答追问，都在同一个项目里继续。</p></div>
         <form id="message-form">
           <label class="sr-only" for="message">回复智能体</label>
@@ -66,13 +72,13 @@
     </aside>
 
     <section class="proposal-board" id="proposal-board" aria-labelledby="board-heading" tabindex="-1">
-      <div class="board-heading-row"><div><p class="eyebrow">当前项目 · 早期体验提案</p><h2 id="board-heading">让设计选择有据可循</h2></div><div class="version-stamp" id="version-stamp">待建立项目</div></div>
-      <div class="project-status" id="project-status" role="status" aria-live="polite"><span class="phase-mark" aria-hidden="true"></span><div><strong>工作台已就绪</strong><p>写下需求，研究证据与两个不同的参与机制会出现在这里。</p></div></div>
+      <div class="board-heading-row"><div><p class="eyebrow">PROJECT / 当前项目 · 早期体验提案</p><h2 id="board-heading">下一场体验，从这里展开。</h2><p class="board-subtitle" id="board-subtitle">把需求、文化依据和设计选择，放在同一张提案板上。</p></div><div class="version-stamp" id="version-stamp">待建立项目</div></div>
+      <div class="project-status" id="project-status" role="status" aria-live="polite"><div class="status-overview"><span class="phase-mark" aria-hidden="true"></span><div class="status-copy"><strong>工作台已就绪</strong><p>写下需求，研究证据与两个不同的参与机制会出现在这里。</p></div></div></div>
       <div id="project-context"></div>
       <section id="questions-panel" class="questions-panel" aria-labelledby="questions-heading" hidden></section>
 
       <section class="concept-section" aria-labelledby="concept-heading">
-        <div class="board-section-heading"><div><p class="eyebrow">已确认内容 · 方案比较</p><h3 id="concept-heading">两种参与方式</h3></div><span class="quiet-label" id="concept-selection-label">选择一个概念，继续修改</span></div>
+        <div class="board-section-heading"><div><p class="eyebrow">CONCEPTS / 方案比较</p><h3 id="concept-heading">同一份需求，两种可能。</h3></div><span class="quiet-label" id="concept-selection-label">先比较参与机制，再选择方向</span></div>
         <div class="concept-grid" id="concepts"><article class="concept-placeholder"><span class="concept-letter">A</span><h4>一个共同发生的时刻</h4><p>生成后，查看到场理由、参与机制与完整体验旅程。</p><div class="placeholder-rule"></div><span>等待研究结果</span></article><article class="concept-placeholder"><span class="concept-letter">B</span><h4>另一种接触产品的方法</h4><p>两个概念的区别应体现在参与和产品互动方式。</p><div class="placeholder-rule"></div><span>等待研究结果</span></article></div>
       </section>
 

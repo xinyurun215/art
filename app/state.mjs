@@ -67,6 +67,19 @@ function ensure(condition, message, path = '/', code = 'PROPOSAL_INVALID') {
 }
 function nonempty(value) { return typeof value === 'string' && value.trim().length > 0; }
 
+function checkForbiddenItems(concept, avoid, pathFor, check) {
+  const fields = [['coreClaim', concept.coreClaim], ['mechanism/description', concept.mechanism.description],
+    ...concept.journey.map((step, index) => [`journey/${index}/action`, step.action]),
+    ...concept.productTouchpoints.map((value, index) => [`productTouchpoints/${index}`, value])];
+  for (const [index, forbidden] of avoid.entries()) for (const [field, value] of fields) {
+    // ponytail: only whole-field exclusions are recognized; compound/ambiguous prose stays blocked pending clarification.
+    const statement = value.trim().replace(/[。.]$/, '');
+    const excluded = ['不', '不安排', '禁止'].some(prefix => statement === prefix + forbidden);
+    check(!value.includes(forbidden) || excluded,
+      `概念字段字面命中禁止项 /brief/avoid/${index}（${JSON.stringify(forbidden)}）`, pathFor(field), 'FORBIDDEN_ITEM_PRESENT');
+  }
+}
+
 // This checks structure and literal constraints, not originality or design quality.
 export function validateProposal(project, proposal) {
   requireResolvedReferences(project);
@@ -105,7 +118,7 @@ export function validateProposal(project, proposal) {
     const contact = concept.productTouchpoints.join(' ');
     const active = [concept.coreClaim, concept.mechanism.description, ...concept.journey.map(s => s.action), contact].join(' ');
     for (const required of project.brief.mustKeep) ensure(active.includes(required), '概念必须保留需求中的必须保留项', path, 'REQUIRED_ITEM_MISSING');
-    for (const forbidden of project.brief.avoid) ensure(!active.includes(forbidden), '概念包含需求中的禁止项', path, 'FORBIDDEN_ITEM_PRESENT');
+    checkForbiddenItems(concept, project.brief.avoid, field => `${path}/${field}`, ensure);
     ensure(Array.isArray(concept.evidenceLinks), '证据引用格式无效', `${path}/evidenceLinks`);
     for (const [linkIndex, link] of concept.evidenceLinks.entries()) {
       const linkPath = `${path}/evidenceLinks/${linkIndex}`;
@@ -336,7 +349,14 @@ export function proposeRevision(project, input) {
   const active = [candidate.coreClaim, candidate.mechanism.description,
     ...candidate.journey.map(step => step.action), ...candidate.productTouchpoints].join(' ');
   for (const required of project.brief.mustKeep) revisionEnsure(active.includes(required), '局部修改丢失必须保留项', '/changes', 'REQUIRED_ITEM_MISSING');
-  for (const forbidden of project.brief.avoid) revisionEnsure(!active.includes(forbidden), '局部修改包含禁止项', '/changes', 'FORBIDDEN_ITEM_PRESENT');
+  checkForbiddenItems(candidate, project.brief.avoid, field => {
+    const [key, ...parts] = field.split('/'), suffix = parts.length ? `/${parts.join('/')}` : '';
+    const index = changes.findIndex(change => change.field === key);
+    if (index >= 0) return `/changes/${index}/after${suffix}`;
+    const sourceIndex = source?.changes.findIndex(change => change.field === key) ?? -1;
+    return sourceIndex >= 0 ? `/revisions/${project.revisions.indexOf(source)}/changes/${sourceIndex}/after${suffix}`
+      : `/concepts/${project.concepts.indexOf(target)}/${field}`;
+  }, revisionEnsure);
   const revision = { id: randomUUID(), projectId: project.id, targetConceptId: request.targetConceptId,
     baseVersion: request.baseVersion, request: request.text, status: 'pending', summary: input.summary,
     changes: consolidated, impact: structuredClone(input.impact), unknowns: structuredClone(input.unknowns), createdAt: new Date().toISOString(),

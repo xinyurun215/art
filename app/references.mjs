@@ -16,20 +16,23 @@ const sourceReference = (project, input) => {
   const reference = project.brief.references.find(reference => normalize(reference).includes(value));
   const quoted = [...project.brief.request.matchAll(/(?:电影|音乐人|歌手|film|movie|artist)?\s*《([^》]+)》(?:\s*[（(][^）)]*[）)])?/gi)]
     .find(match => normalize(match[1]) === value);
+  const escaped = String(input).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const qualified = quoted?.[0].trim() ?? new RegExp(`(?:电影|音乐人|歌手|\\bfilm|\\bmovie|\\bartist)\\s*${escaped}(?=$|[\\s，,。；;、）)])`, 'i')
+    .exec(project.brief.request)?.[0];
   return reference ? { field: 'references', sourceText: reference,
-    text: quoted ? `${reference}；${quoted[0].trim()}` : reference }
-    : quoted ? { field: 'request', text: quoted[0].trim() }
+    text: qualified ? `${reference}；${qualified}` : reference }
+    : qualified ? { field: 'request', text: qualified }
       : normalize(project.brief.request).includes(value) ? { field: 'request', text: input } : null;
 };
 
-function matchCandidate(original, input, candidates) {
+function matchCandidate(original, input, candidates, nameResolved = false) {
   const title = /《([^》]+)》/.exec(original)?.[1] ?? input.split(/[,，;；]\s*(?:directed by|导演|作者|创作者|by)\s*/i)[0]
     .replace(/\([^)]*\)|（[^）]*）/g, '').replace(/^(?:电影|film|movie)\s*[:：]?\s*/i, '').trim();
   const year = original.match(/\b(?:18|19|20)\d{2}\b/g)?.filter((value, index, values) => values.indexOf(value) === index);
   const type = /电影|\b(?:film|movie)\b/i.test(original) ? 'movie'
     : /音乐人|歌手|\bartist\b/i.test(original) ? 'artist' : null;
   const creator = /(?:导演|作者|创作者|directed by|\bby)\s*[:：]?\s*([^,，;；()（）]+)/i.exec(original)?.[1]?.trim();
-  const matching = candidates.filter(candidate => normalize(candidate.name) === normalize(title)
+  const matching = candidates.filter(candidate => (nameResolved || normalize(candidate.name) === normalize(title))
     && (!type || normalize(candidate.type).split(':').at(-1) === type)
     && (!year || year.length === 1 && String(candidate.release_year ?? candidate.properties?.release_year) === year[0])
     && (!creator || normalize(JSON.stringify({ creator: candidate.creator, director: candidate.director, author: candidate.author,
@@ -66,6 +69,29 @@ export function observeReferenceResolution(project, operation, input, result) {
     if (match.selected) Object.assign(awaiting, { status: 'system_resolved', selectedId: match.selected.id,
       selected: structuredClone(match.selected), candidates: structuredClone(values), basis: match.basis, awaitingLookup: false });
     referenceQuestion(project);
+  }
+  // A successful first description also supplies a binding for tools already
+  // planned in the same model response. Trust the official name resolution;
+  // check user qualifiers, not a second exact-name gate or a guessed first hit.
+  if (result.status === 'ok' && operation === 'describe' && !awaiting && !pendingReference(project)
+    && typeof input.entity === 'string' && !uuid.test(input.entity)) {
+    const source = sourceReference(project, input.entity);
+    const outcomes = (result.resolution?.outcomes ?? []).filter(outcome => outcome.input === input.entity);
+    const outcome = outcomes.length === 1 ? outcomes[0] : undefined;
+    const selected = outcome?.status === 'resolved' ? outcome.selected : undefined;
+    if (source && selected?.type && uuid.test(selected.id)
+      && (result.results ?? []).some(entity => sameId(entity.id ?? entity.entity_id, selected.id))) {
+      const match = matchCandidate(source.text, input.entity, [selected], true);
+      // A model-supplied type filter alone does not establish the user's intent.
+      if (match.selected && (!input.type || match.basis.type)) {
+        (project.referenceResolutions ??= []).push({ id: randomUUID(), projectId: project.id, baseVersion: project.version,
+          input: input.entity, originalInput: source.text, sourceText: source.sourceText ?? source.text, sourceField: source.field,
+          operation, toolInput: structuredClone(input), field: 'entity', candidates: [structuredClone(selected)],
+          status: 'system_resolved', selectedId: selected.id, selected: structuredClone(selected),
+          basis: { ...match.basis, source: '官方成功描述已解析名称并返回同一实体；用户原始限定相符。这是系统解析，不是用户确认。' },
+          createdAt: new Date().toISOString(), confirmed: false, ...(project.mode === 'offline' ? { synthetic: true } : {}) });
+      }
+    }
   }
   if (result.status !== 'needs_input') return;
   const tool = `qloo_${operation}`;
