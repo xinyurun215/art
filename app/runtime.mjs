@@ -20,13 +20,13 @@ export const TOOL_NAMES = Object.freeze(['qloo_describe', 'qloo_recommend', 'pro
 export const REVISION_TOOL_NAMES = Object.freeze(['propose_concept_revision', 'read_project_evidence']);
 const toolText = message => typeof message.content === 'string' ? message.content :
   (message.content ?? []).filter(c => c.type === 'text').map(c => c.text).join('');
-const contextCapacityReason = budget => `完整请求的离线估算超过本地上下文预算 ${budget.overByTokens} 个词元；最大组成是${
-  { system: '系统指令', work: '当前工作状态', history: '最近工具回合', tools: '工具定义', wrappers: '请求包装字段' }[budget.largestComponent]}。已保留输出和安全余量，本地停止并保留状态。`;
+const contextCapacityReason = budget => `The offline estimate of the full request exceeds the local context budget by ${budget.overByTokens} tokens. The largest part is ${
+  { system: 'the system instructions', work: 'the current working state', history: 'the latest tool turns', tools: 'the tool definitions', wrappers: 'the request wrapper fields' }[budget.largestComponent]}. Output capacity and the safety margin were kept. The run stopped locally and the current state was kept.`;
 const projectEvidenceReference = reference => {
   const { observation, ...fields } = reference;
-  const derived = `实际返回 ${reference.observedField} = ${JSON.stringify(reference.observedValue)}；${reference.basis === 'affinity'
-    ? '仅为本次请求的文化亲和关联，不是描述、设计评分或效果预测。' : reference.basis === 'description'
-      ? '这是实体描述，不是文化亲和关联分数或受众效果证据。' : '仅能证明该字段实际返回。'}`;
+  const derived = `Returned ${reference.observedField} = ${JSON.stringify(reference.observedValue)}. ${reference.basis === 'affinity'
+    ? 'This is only this request\'s cultural affinity association, not a description, a design score, or an effect prediction.' : reference.basis === 'description'
+      ? 'This is an entity description, not a cultural affinity score or evidence of audience effect.' : 'This only proves that the field was actually returned.'}`;
   return observation === derived ? fields : reference;
 };
 const snapshotProject = project => {
@@ -92,7 +92,7 @@ const revisionSchema = Type.Object({
     { description: 'Only actual field changes: compare after with the selected concept in project.concepts, or currentPendingDraft for pending_feedback. Omit unchanged fields, including evidenceLinks and unverifiedEffects; each field may appear only once. Omitted fields are preserved. Within a changed field, retain unaffected entries and conditions.' }),
   impact: Type.Array(Type.String(), { description: 'Required top-level array describing the scope and consequences of these changes. Always include impact, even when the array is empty; do not place it inside a change.' }),
   unknowns: Type.Array(Type.String(), { description: 'Required top-level array of actual unverified conditions. A pending revision needs at least one unknown; needs_input/conflict may use []. Never omit unknowns or present an unverified condition as resolved.' }) }, { additionalProperties: false });
-const revisionCorrection = '按反馈路径和类型修正；changes 只提交相对所选正式概念（pending_feedback 时为 currentPendingDraft）的实际变化，删除未变化的 changes 条目，不为制造差异改写无关内容。保留受影响字段内的无关条目与条件，补齐真实 impact 与 unknowns；仅使用已有精确证据，不查询 Qloo。可提交 pending，或以 needs_input/conflict 提出一个问题、changes: [] 并暂停；正式版本保持不变。';
+const revisionCorrection = 'Correct the revision using the feedback path and types. changes must contain only real differences from the selected confirmed concept, or from currentPendingDraft during pending_feedback. Remove unchanged change entries. Do not rewrite unrelated content to manufacture a difference. Inside a changed field, keep unaffected entries and conditions. Include real impact and unknowns. Use only exact existing evidence. Do not query Qloo. You may submit pending, or pause with needs_input or conflict, exactly one question, and changes: []. The confirmed version stays unchanged. Write every user-visible string in English.';
 
 // A named, explicitly selected fixture exercises official model/tool dispatch.
 // It makes no claim to understand arbitrary feedback or generate a live design.
@@ -355,9 +355,9 @@ function stoppedExecution(project, executor, operation, context) {
     result: { schema_version: '1.0-preview.1', operation, status: 'error', queryStopped: true,
       feedback: project.runtime.localFailure?.kind === 'qloo'
         ? toolFeedback(project, project.runtime.localFailure.code, '/', project.runtime.localFailure.reason)
-        : toolFeedback(project, 'QLOO_QUERY_STOPPED', '/', '本轮查询已经停止；禁止后续查询与替代请求。'),
-      summary: '本轮真实查询已经停止；后续查询与替代请求均被阻止。可依据已有精确字段提出边界草案或明确暂停。',
-      error: { code: 'ART_QUERY_STOPPED', layer: 'harness', retryable: false, recovery: '保留当前项目，说明失败；不要重试或使用替代查询。' }, results: [] } };
+        : toolFeedback(project, 'QLOO_QUERY_STOPPED', '/', 'Queries have stopped for this run. Do not send another query or a substitute request.'),
+      summary: 'Live queries have stopped for this run. Further queries and substitute requests are blocked. Draft from exact fields already saved, with the boundary marked, or pause explicitly. Write that draft in English.',
+      error: { code: 'ART_QUERY_STOPPED', layer: 'harness', retryable: false, recovery: 'Keep the current project and state the failure. Do not retry or send a substitute query.' }, results: [] } };
 }
 
 // The same process latch covers every exposed official query tool. A failed
@@ -428,11 +428,11 @@ export function wrapProjectExecutor(project, officialExecutor, env = process.env
     const empty = status === 'empty' || (status === 'ok' && Array.isArray(execution.result.results) && execution.result.results.length === 0);
     const feedback = toolFeedback(project,
       empty ? 'QLOO_EMPTY' : status === 'needs_input' ? 'QLOO_NEEDS_INPUT' : status === 'error' ? 'QLOO_REMOTE_ERROR' : 'QLOO_RESULT_AVAILABLE', '/',
-      empty ? '查询完成但返回0个实体；无可引用结果，不是本地额度耗尽。'
-        : status === 'needs_input' ? '官方工作流需要澄清实体或查询参数；未取得可用结果。'
-          : status === 'error' ? '官方工作流返回错误；没有取得新的支持证据。'
-            : '实际返回字段可被精确引用；描述可支持标明边界的设计推断，不证明受众或效果。',
-      status === 'needs_input', empty ? '不要重复相同空查询；可调整明确参数、使用已有证据提交草案，或以 insufficient_evidence 暂停。' : undefined);
+      empty ? 'The query finished and returned 0 entities. There is nothing to cite. This is not a local budget exhaustion.'
+        : status === 'needs_input' ? 'The official workflow needs a clarified entity or query parameter. No usable result was returned.'
+          : status === 'error' ? 'The official workflow returned an error. No new supporting evidence was obtained.'
+            : 'The returned fields can be cited exactly. A description can support a clearly bounded design inference. It does not prove audience or effect.',
+      status === 'needs_input', empty ? 'Do not repeat the same empty query. Adjust an explicit parameter, draft from evidence already saved, or pause with insufficient_evidence. Write the draft in English.' : undefined);
     execution = { ...execution, result: { ...execution.result, feedback } };
     action(project, 'query', project.mode === 'offline' ? '读取演示用合成数据' : '执行官方文化研究查询',
       execution.result.status === 'error' ? (project.mode === 'live' ? '查询失败；没有支持设计的证据；真实模式已停止后续查询' : '离线模拟查询失败；没有支持设计的证据') : card?.relevant === false ? '返回内容无关；不能用作设计依据' : '返回字段已保留，等待模型区分事实与设计转译',
@@ -540,7 +540,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
   }
   const executor = wrapProjectExecutor(project, officialExecutor, env);
   const tools = createQlooTools({ executor }).filter(t => TOOL_NAMES.includes(t.name));
-  tools.push({ name: 'read_project_evidence', label: '读取当前项目已存证据字段',
+  tools.push({ name: 'read_project_evidence', label: 'Read a saved evidence field in this project',
     description: 'Read saved evidence in this project, without HTTP or state changes. Supply evidenceId alone (plus optional offset) for at most 12 entity identities and nextOffset; supply entityId and entity-relative dotted field path for one saved entity field, e.g. properties.description or affinity. Without entityId, field may only be query or a query.* path on this evidence card, e.g. query.input.signals.0. Exact fields are limited to 6000 serialized characters. Only status ok and exact true is an exact citable value; missing or too_large previews must not be cited as a complete field. Cannot read another project, arbitrary card/project fields, files or URLs.',
     parameters: Type.Object({ evidenceId: Type.String(), entityId: Type.Optional(Type.String({ description: 'Required for returned-entity fields; omit only for the entity index or allowlisted card query paths.' })),
       field: Type.Optional(Type.String({ description: 'Entity-relative dotted field with entityId; only query or query.* without entityId. Numeric array indices are allowed; file, URL and prototype paths are forbidden.' })),
@@ -550,27 +550,27 @@ export async function createProductRuntime(project, { env = process.env, decide 
       return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
     } });
   let submittedRevisionId = null;
-  tools.push({ name: 'propose_concept_revision', label: '提出局部待审修改',
+  tools.push({ name: 'propose_concept_revision', label: 'Propose a partial pending revision',
     description: 'Propose changes only to the server-bound selected concept and base version. Compare after with the selected concept in project.concepts; for pending_feedback compare with currentPendingDraft. Omit unchanged fields, including evidenceLinks and unverifiedEffects, and never repeat a field. Omitted fields retain their current values. Preserve unaffected entries and conditions within changed fields. Never submit project identity, target identity, base version, before values, full projects or concepts. Confirmed content is immutable until user acceptance. Return pending changes with reasons, exact existing evidence references, impact and unknowns, or needs_input/conflict with exactly one question and no changes. Evidence description/short_description can support explicitly marked design inference; affinity is only cultural association and cannot support description claims or effect scores. Existing historical evidence links must be preserved; do not repair or revalidate unrelated content. Structural example only; replace placeholders with actual allowed changes and exact saved evidence values: {"phase":"pending","summary":"<revision-summary>","changes":[{"field":"evidenceLinks","after":[{"evidenceId":"<card-id>","entityId":"<returned-entity-id>","observedField":"properties.description","observedValue":"<complete-actual-field-value>","observation":"<actual-observation>","inspiration":"<explicit-design-inference>"}],"reason":"<reason-for-this-change>","evidenceRefs":[{"evidenceId":"<card-id>","entityId":"<returned-entity-id>","observedField":"properties.description","observedValue":"<complete-actual-field-value>","inspiration":"<explicit-design-inference>"}]}],"impact":["<scope-and-consequences>"],"unknowns":["<actual-unverified-condition>"]}. Every changes item, especially evidenceLinks, must have all four keys field, after, reason, evidenceRefs; reason and evidenceRefs are siblings of after. The required top-level impact and unknowns arrays must also be present.',
     parameters: revisionSchema,
     async execute(_id, input) {
       let result;
       const issue = schemaIssue(revisionSchema, input);
       try {
-        if (issue) throw Object.assign(new Error('局部修改参数结构无效；不要提交项目、目标、基础版本或修改前内容'),
-          { feedback: { code: 'REVISION_SCHEMA_INVALID', path: issue.path, reason: '局部修改参数结构无效；按限定字段修正。', correctable: true } });
+        if (issue) throw Object.assign(new Error('The partial revision arguments are structurally invalid. Do not submit the project, target, base version, or before values.'),
+          { feedback: { code: 'REVISION_SCHEMA_INVALID', path: issue.path, reason: 'The partial revision arguments are structurally invalid. Correct them using the allowed fields, in English.', correctable: true } });
         result = proposeRevision(project, { ...input, requestId: submittedRevisionId });
         action(project, 'revision', result.status === 'pending' ? '形成局部待审修改' : '局部修改待确认', input.summary);
         result = { accepted: false, completed: true, revisionId: result.id ?? null, status: result.status,
-          feedback: toolFeedback(project, 'REVISION_RESPONSE_SAVED', '/', '已保存局部修改回应；正式版本未改变，须由用户审查批准。', false) };
+          feedback: toolFeedback(project, 'REVISION_RESPONSE_SAVED', '/', 'The partial revision response was saved. The confirmed version is unchanged until the user approves it.', false) };
       } catch (error) {
-        const rejected = error.feedback ?? { code: 'REVISION_INVALID', path: '/', reason: '局部修改校验失败；正式版本保持不变。', correctable: true };
+        const rejected = error.feedback ?? { code: 'REVISION_INVALID', path: '/', reason: 'The partial revision failed validation. The confirmed version is unchanged.', correctable: true };
         result = { accepted: false, status: 'error', feedback: toolFeedback(project, rejected.code, rejected.path, rejected.reason,
           rejected.correctable, revisionCorrection, issue) };
       }
       return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
     } });
-  tools.push({ name: 'propose_design_response', label: '提出结构化设计回应',
+  tools.push({ name: 'propose_design_response', label: 'Propose a structured design response',
     description: 'Only updates the bound current project after version, actual evidence field references, and literal constraints pass. Never submit projectId. questions may be omitted or [] unless phase is needs_input, which requires exactly one {field,text} question with nonempty text. field must be request, brand, goal, references, venue, budget, mustKeep, or avoid. Ready requires two distinct mechanisms; insufficient evidence may pause with zero concepts or show two unsupported drafts.',
     parameters: proposalSchema,
     async execute(_id, input) {
@@ -578,18 +578,18 @@ export async function createProductRuntime(project, { env = process.env, decide 
       const issue = schemaIssue(proposalSchema, input);
       if (issue) {
         result = { accepted: false, status: 'error', feedback: toolFeedback(project, 'PROPOSAL_SCHEMA_INVALID', issue.path,
-          '提案参数结构无效；按字段类型修正，且不要提交项目标识。', true, undefined, issue) };
+          'The proposal arguments are structurally invalid. Correct the field types and do not submit a project id. Write the corrected proposal in English.', true, undefined, issue) };
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
       }
       try { result = applyProposal(project, { ...input, projectId: project.id }); }
       catch (error) {
-        const rejected = error.feedback ?? { code: 'PROPOSAL_INVALID', path: '/', reason: '提案未通过业务校验；项目未被修改。', correctable: true };
+        const rejected = error.feedback ?? { code: 'PROPOSAL_INVALID', path: '/', reason: 'The proposal failed validation. The project was not changed.', correctable: true };
         result = { accepted: false, status: 'error', feedback: toolFeedback(project, rejected.code, rejected.path, rejected.reason,
-          rejected.correctable, '按反馈路径修正提案字段后重试；不得编造项目、证据或引用。', businessDiagnostic(project, input, rejected.path)) };
+          rejected.correctable, 'Correct the proposal fields at the feedback path and retry. Do not invent a project, evidence, or citation. Write the proposal in English.', businessDiagnostic(project, input, rejected.path)) };
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
       }
       action(project, 'proposal', input.phase === 'needs_input' ? '提出关键澄清' : '形成可讨论概念', input.summary);
-      result.feedback = toolFeedback(project, 'PROPOSAL_ACCEPTED', '/', '提案已通过结构、版本、引用与字面约束校验；不代表设计质量或产品验收。', false, '当前提案已保存；等待用户审阅。');
+      result.feedback = toolFeedback(project, 'PROPOSAL_ACCEPTED', '/', 'The proposal passed structure, version, citation, and literal-constraint checks. That is not a judgment of design quality or product acceptance.', false, 'The proposal is saved. Wait for the user to review it.');
       return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
     } });
   const sessionDirectory = resolve(root, '.art-runtime', project.id, 'sessions');
@@ -611,11 +611,11 @@ export async function createProductRuntime(project, { env = process.env, decide 
   if (project.mode === 'live' && priorSession)
     (project.runtime.sessionHistory ??= []).push(savedSession);
   const limits = remainingBudget(project);
-  const liveBudgetDescription = `真实模型与 Qloo 的每项目 HTTP 请求上限分别为 ${limits.caseLimits.modelHttpAttempts}、${limits.caseLimits.qlooHttpAttempts} 次${limits.sharedLimits.modelHttpAttempts === null ? '' : `，本服务合计上限分别为 ${limits.sharedLimits.modelHttpAttempts}、${limits.sharedLimits.qlooHttpAttempts} 次`}，包括重试。`;
+  const liveBudgetDescription = `Each project may make at most ${limits.caseLimits.modelHttpAttempts} model HTTP requests and ${limits.caseLimits.qlooHttpAttempts} Qloo HTTP requests${limits.sharedLimits.modelHttpAttempts === null ? '' : `, and this service may make at most ${limits.sharedLimits.modelHttpAttempts} model and ${limits.sharedLimits.qlooHttpAttempts} Qloo HTTP requests in total`}. Retries count.`;
   const runtime = await createPiHarnessRuntime({ cwd: root, paths, profile: 'explore', modelRuntime,
     sessionManager,
-    resources: { systemPrompt: `你是品牌快闪体验设计智能体。project.brief.request 是不可覆盖的原始需求原文。project.clarifications 是有限相关问题与回答视图，clarificationHistory 给出总数与省略数；原需求补充完整保留，较早结构化字段问答可能省略，不代表其条件撤销，当前字段以 brief 及明确修改为准；如仍有影响决策的歧义应澄清。普通回答补充原需求，不替换未提及条件，含糊的“都可以”“按你建议”不代表放宽城市、预算、必须项或禁止项。仅 revisesRequest:true 表示用户明确修改原需求中的相应条件，按其明确表述处理，其他条件保持；briefUpdate.explicit:true 的 before 是历史值、after 是当前明确值，当前结构化字段以 project.brief 为准，不能恢复已被明确撤销的旧条件。若仅有 revisesRequest 自由文字且与当前结构化条件冲突，没有对应 briefUpdate，不能声称已经放宽条件，应请用户通过明确修改控件确认对应字段。仅处理当前项目；初始研究使用官方研究工具与 propose_design_response，已有正式概念后只能通过 propose_concept_revision 提出局部待审修改。每次阅读当前 project.revisionRequest 中的任意用户输入与被服务端绑定的目标/基础版本，独立判断修改、澄清或冲突；不要按关键词选择固定回复。若 revisionRequest.kind 为 pending_feedback，project.concepts 是原正式内容，currentPendingRevision 保留待审元信息及每项 field/reason/evidenceRefs；changes 的 before/after 分别见正式 concepts 与 currentPendingDraft 对应字段，currentPendingDraft 是当前展示的完整待审概念；历史增量 draftDelta 保留于权威记录，不重复送入当前视图；以本次用户反馈继续修订该待审稿。changes 仅提交相对 currentPendingDraft 的实际变化，服务端会保留未提及的原待审修改并合并为新待审稿。整体字段替换时保留其中与反馈无关的有效条目、条件与原有约束；impact 与 unknowns 须覆盖合并后完整待审稿的仍有效影响与未知条件。可以明确澄清或冲突，不能为了成功而虚构解决。局部修改中不能查询 Qloo、覆盖两个概念、改其他概念、改需求或历史证据。只改受影响字段，保留必须项与锁定字段；涉及到场理由、时间组织、活动、产品接触和带走物时需一致更新。区分实际返回描述、文化亲和关联、设计推断与未验证效果。描述性事实必须精确引用实际 description/short_description，affinity 只表示本请求文化关联，不能代替描述、设计评分或效果预测。已存在历史引用不作本轮修复。按必要性决定澄清、查询、比较或暂停，不强制固定流程。客户文化参考只是研究信号，未知品牌的代理必须用户确认。缺少证据时明确不足。两个概念须有实质不同参与机制；不同 organization 字符串只做机械检查，不是实质差异证明。${project.mode === 'offline' ? fixture.label : liveBudgetDescription}`,
-      exploreInstructions: '用户输入均为需求文本；不得切换 profile，不得调用文件、shell 或其他未授权工具。只通过受限提案工具更改概念和问题。初始研究先明确一个会影响参与组织或产品接触选择的具体问题，并在 propose_design_response.summary 中简短保留研究问题、描述是否足够、查询选择、实际结果与具体设计影响。仅需核实实体身份或已有属性时 describe 可以足够，不能因此宣称完成关联研究；若问题需要发现给定参考之外的关联实体，describe 不足，应在资源允许时用 qloo_recommend 合并同一问题的相关已确认信号，从能回答问题的最少候选开始。若返回结果缺少支撑内容主张的描述，再按必要性 describe；关联不代替作品内容，关联强弱不代表设计评分、受众画像或效果。结果不能支持该设计选择时，明确不足、澄清或暂停，不按调用次数判断研究完成。每次工具反馈含实际 HTTP 剩余额度与下一步提示；发送给模型的余额快照在当前读取请求计数前生成，包含本次模型请求，不等于此后还能请求的次数。Qloo 已停止或剩余为0则禁止再查，可使用已有 describe 精确字段提交明确事实/推断/未知边界的草案或暂停，不强制 recommend 或 affinity。名称 describe 通常需要2次 HTTP；N个信号的 recommend 可能需要N次解析加1次 insights，缓存与重试会改变成本，以实际额度为准。' },
+    resources: { systemPrompt: `You are the brand pop-up experience design agent. Write every user-visible string in English: summaries, questions, concept titles, claims, mechanisms, journeys, product touchpoints, reasons, impact, unknowns, and assistant replies. Do this even when the client brief or feedback is in another language. Do not write Chinese in tool arguments or assistant text. project.brief.request is the original request and must not be overwritten. project.clarifications is a bounded view of relevant questions and answers; clarificationHistory gives the total and how many were omitted. Supplements to the original request are kept in full. Earlier structured answers may be omitted; omission does not revoke those conditions. Current fields follow the brief and explicit edits. If ambiguity would change the next decision, ask. An ordinary reply adds to the original request and does not replace conditions that were not mentioned. Vague replies such as "either is fine" or "follow your suggestion" do not relax city, budget, must-keep, or avoid constraints. Only revisesRequest:true means the user explicitly changed that condition in the original request; apply that explicit wording and keep every other condition. When briefUpdate.explicit is true, before is the historical value and after is the current explicit value. Current structured fields follow project.brief. Do not restore a condition that was explicitly revoked. If free text with revisesRequest conflicts with a current structured condition and there is no matching briefUpdate, do not claim the condition was relaxed. Ask the user to confirm that field with the explicit edit control. Work only on the current project. Initial research uses the official research tools and propose_design_response. After confirmed concepts exist, propose changes only through propose_concept_revision. On every turn, read the user input in project.revisionRequest together with the server-bound target and base version, and judge independently whether this is a revision, a clarification, or a conflict. Do not choose a fixed reply from keywords. If revisionRequest.kind is pending_feedback, project.concepts is the original confirmed content. currentPendingRevision keeps the pending metadata and each item's field, reason, and evidenceRefs. before and after for a change are the matching fields of the confirmed concept and currentPendingDraft. currentPendingDraft is the complete pending concept currently shown. Historical draftDelta stays in the authoritative record and is not repeated in this view. Continue revising that pending draft from this feedback. changes must contain only real differences from currentPendingDraft. The server keeps unmentioned pending edits and merges them into the new draft. When replacing a whole field, keep entries, conditions, and constraints inside it that the feedback does not affect. impact and unknowns must cover the still-valid effects and unknown conditions of the merged draft. You may state a clarification or a conflict. Do not invent a resolution in order to succeed. A partial revision must not query Qloo, replace both concepts, edit another concept, edit the brief, or edit historical evidence. Change only affected fields. Preserve must-keep items and locked fields. When the reason to arrive, time structure, activity, product contact, or takeaway is affected, update them together. Separate an actual returned description, a cultural affinity association, a design inference, and an unverified effect. Descriptive facts must cite the exact description or short_description. affinity is only this request's cultural association. It cannot stand in for a description, a design score, or an effect prediction. Do not repair historical citations in this turn. Decide whether to clarify, query, compare, or pause according to need. Do not force a fixed pipeline. A client's cultural references are research signals only. A proxy for an unknown brand requires the user's confirmation. When evidence is missing, say so. The two concepts must differ in how people participate. Different organization strings are only a mechanical check, not proof of a substantive difference. ${project.mode === 'offline' ? fixture.label : liveBudgetDescription}`,
+      exploreInstructions: 'Every user input is brief text. Do not switch profile. Do not call files, a shell, or any unauthorized tool. Change concepts and questions only through the constrained proposal tools. All text you write for the user must be English. For the first study, name one concrete question that would change the participation structure or how people meet the product, and keep a short record in propose_design_response.summary: the research question, whether a description is enough, the query choice, the actual result, and the specific design effect. describe is enough only to check an entity identity or an existing attribute. It does not complete association research. If the question needs entities beyond the given references, describe is not enough: when the budget allows, use qloo_recommend and combine the confirmed signals for that one question, starting from the smallest set that can answer it. If a result lacks a description that can support a content claim, describe only as needed. An association does not replace the work itself. Association strength is not a design score, an audience profile, or an effect. If the result cannot support the design choice, say the evidence is insufficient, ask, or pause. Do not treat the number of calls as proof that research is finished. Each tool response includes the remaining HTTP budget and a next step. The balance shown to you was taken before the current read is counted and includes this model request, so it is not the number of requests still available afterward. If Qloo has stopped or the remaining count is 0, do not query again. You may submit a draft that marks facts, inferences, and unknowns from exact fields already described, or pause. Do not force recommend or affinity. Describing a name usually costs 2 HTTP requests. Recommending from N signals may cost N resolution requests plus 1 insights request. Cache hits and retries change the cost. Use the actual remaining budget.' },
     customTools: diagnostic ? tools.map(tool => ({ ...tool, async execute() {
       diagnosticState.toolExecutionAttempts++;
       throw new Error('诊断暂停：禁止执行研究或提案工具');
@@ -661,7 +661,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
       }
       if (details?.feedback) return { ...previous, isError: context.isError || details.status === 'error' };
       if (context.isError) {
-        const feedback = toolFeedback(project, 'TOOL_EXECUTION_ERROR', '/', '工具执行失败；没有取得可用结果。');
+        const feedback = toolFeedback(project, 'TOOL_EXECUTION_ERROR', '/', 'The tool failed. No usable result was obtained.');
         const safe = { status: 'error', feedback };
         return { ...previous, content: [{ type: 'text', text: JSON.stringify(safe) }], details: safe, isError: true };
       }
@@ -673,7 +673,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
       return toolFeedback(project, issue ? (event.toolName === 'propose_design_response' ? 'PROPOSAL_SCHEMA_INVALID'
         : event.toolName === 'propose_concept_revision' ? 'REVISION_SCHEMA_INVALID' : 'QLOO_ARGUMENTS_INVALID')
         : definition ? 'TOOL_EXECUTION_ERROR' : 'TOOL_NOT_ALLOWED', issue?.path ?? '/',
-      issue ? '工具参数未通过结构校验；按反馈路径和期望类型修正。' : '工具未获许可或执行失败；没有取得可用结果。',
+      issue ? 'The tool arguments failed structural validation. Correct the path and expected type, in English.' : 'The tool is not allowed or failed. No usable result was obtained.',
       Boolean(issue), event.toolName === 'propose_concept_revision' ? revisionCorrection : undefined,
       issue ?? valueDiagnostic(event.args, '/', 'allowed tool arguments'));
     };
@@ -714,7 +714,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
         const previous = project.runtime.feedback;
         project.runtime.feedback = previous && previous.code !== 'QLOO_RESULT_AVAILABLE'
           ? toolFeedback(project, previous.code, previous.path, previous.reason, previous.correctable, undefined, feedbackFields(previous))
-          : toolFeedback(project, 'MODEL_HTTP_BUDGET_EXHAUSTED', '/', '模型 HTTP 总额度已用尽；尚无通过校验的提案，保留当前状态。');
+          : toolFeedback(project, 'MODEL_HTTP_BUDGET_EXHAUSTED', '/', 'The model HTTP budget is exhausted. No validated proposal was saved. The current state is kept.');
         return true;
       }
       return false;

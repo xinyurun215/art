@@ -7,27 +7,27 @@
   let modeChosen = false;
   const storageKey = 'art-current-project';
   const demo = {
-    request: '合成验收任务：为虚构运动鞋品牌「未定式」的新日常鞋款设计快闪。希望来访者通过身体参与和试穿理解产品，比较两种实质不同的参与方式。音乐、电影偏好只是待研究信号，不是真实受众画像。',
-    brand: '未定式 · 虚构运动鞋品牌（演示输入）',
-    goal: '让来访者通过体验理解新鞋款，保留试穿',
-    references: ['独立音乐', '电影叙事'],
-    venue: '上海，室内约 150 平方米，具体场地未确认',
-    budget: '8–12 万元；客户输入，未经报价验证',
-    mustKeep: '试穿',
-    avoid: '强制注册、未经确认的版权与效果承诺'
+    request: 'Synthetic demo: design a pop-up for the fictional sneaker brand Weiding. Visitors should understand the new everyday shoe by taking part and trying it on. Compare two substantively different ways to participate. Music and film preferences are research signals, not a real audience profile.',
+    brand: 'Weiding · fictional sneaker brand (demo input)',
+    goal: 'Let visitors understand the new shoe by experiencing it. Keep the try-on.',
+    references: ['independent music', 'film narrative'],
+    venue: 'Shanghai, about 150 square meters indoors. The exact venue is not confirmed.',
+    budget: '80,000–120,000 CNY; client input, not a verified quote',
+    mustKeep: 'try-on',
+    avoid: 'forced signup, and unconfirmed claims about rights or results'
   };
   const phaseLabels = {
-    busy: '智能体正在处理',
-    needs_input: '需要你补充一个条件',
-    ready: '两个概念已可比较',
-    revision_pending: '修改已提出，等待你审查',
-    revision_needs_input: '修改前还需要确认一个条件',
-    revision_conflict: '修改与现有条件冲突',
-    interrupted: '上次处理已中断',
-    insufficient_evidence: '证据不足，先停在这里',
-    error: '本轮未完成'
+    busy: 'The agent is working',
+    needs_input: 'One condition still needs you',
+    ready: 'Two concepts are ready to compare',
+    revision_pending: 'A change is waiting for your review',
+    revision_needs_input: 'One condition must be confirmed before the change',
+    revision_conflict: 'The change conflicts with an existing condition',
+    interrupted: 'The last run was interrupted',
+    insufficient_evidence: 'Not enough evidence. Stopping here.',
+    error: 'This round did not finish'
   };
-  const unknown = '<span class="unknown-note">未知 · 未返回</span>';
+  const unknown = '<span class="unknown-note">Unknown · not returned</span>';
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   const list = (value) => Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
   const asText = (value) => typeof value === 'object' && value !== null ? JSON.stringify(value, null, 2) : String(value ?? '');
@@ -40,14 +40,14 @@
     rendered.set(element, markup);
     element.innerHTML = markup;
   };
-  const organizationLabels = { collective_scheduled: '集体 · 定时参与', individual_self_paced: '个人 · 自主节奏', paired_45_minute_collaboration: '双人 · 45 分钟协作' };
-  const toolLabels = { qloo_recommend: '查询文化关联', qloo_describe: '查询实体描述', read_project_evidence: '读取已存证据', propose_design_response: '提交设计方案', propose_concept_revision: '提出局部修改' };
-  const entityTypes = { artist: '艺人', movie: '电影', tv_show: '剧集', book: '书籍', brand: '品牌', place: '地点', destination: '目的地', person: '人物', actor: '演员', director: '导演', podcast: '播客', video_game: '游戏', album: '专辑', author: '作者' };
+  const organizationLabels = { collective_scheduled: 'Group · scheduled', individual_self_paced: 'Individual · own pace', paired_45_minute_collaboration: 'Pair · 45 minutes' };
+  const toolLabels = { qloo_recommend: 'Look up cultural associations', qloo_describe: 'Look up an entity description', read_project_evidence: 'Read saved evidence', propose_design_response: 'Submit a design proposal', propose_concept_revision: 'Propose a partial change' };
+  const entityTypes = { artist: 'artist', movie: 'movie', tv_show: 'series', book: 'book', brand: 'brand', place: 'place', destination: 'destination', person: 'person', actor: 'actor', director: 'director', podcast: 'podcast', video_game: 'game', album: 'album', author: 'author' };
   const pendingRevision = (project) => list(project?.revisions).findLast((revision) => revision.status === 'pending');
   const isBusy = () => state.pending || state.project?.status?.phase === 'busy' || state.project?.revisionRequest?.status === 'running';
   const conceptLetter = (project, id) => {
     const index = list(project.concepts).findIndex((concept) => concept.id === id);
-    return index < 0 ? '未知概念' : `概念 ${String.fromCharCode(65 + index)}`;
+    return index < 0 ? 'Unknown concept' : `Concept ${String.fromCharCode(65 + index)}`;
   };
 
   function rememberProject(project) {
@@ -63,10 +63,10 @@
       headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
     });
     let result;
-    try { result = await response.json(); } catch { throw new Error('服务没有返回可读取的项目记录。'); }
+    try { result = await response.json(); } catch { throw new Error('The service did not return a readable project record.'); }
     if (!response.ok) {
       const error = result?.error;
-      throw Object.assign(new Error(typeof error === 'string' ? error : error?.message || result?.message || `请求未完成（${response.status}）。`), {
+      throw Object.assign(new Error(typeof error === 'string' ? error : error?.message || result?.message || `The request did not finish (${response.status}).`), {
         status: response.status, code: result?.code || error?.code, path: result?.path || error?.path
       });
     }
@@ -83,7 +83,7 @@
     if (retry) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.textContent = '重新读取';
+      button.textContent = 'Read again';
       button.addEventListener('click', retry);
       area.append(button);
     }
@@ -103,12 +103,12 @@
     $('mode').disabled = busy;
     $('load-demo').disabled = busy;
     $('load-ambiguous').disabled = busy;
-    $('create-project').firstElementChild.textContent = busy ? '研究进行中…' : state.project ? '以当前输入新建项目' : '开始研究';
-    $('message').placeholder = !state.project ? '先开始一份项目，再继续对话' : busy ? '等待当前行动完成…' : generationUnavailable ? '真实服务当前不可用；可查看已保存内容、审查已有待审稿' : pending ? '可在右侧待审稿下提交反馈，继续修订' : needsSelection ? '先在提案板选择 A 或 B，再提出修改' : selected ? '修改选定概念，也可使用右侧修改框' : '补充条件，或说明需要继续研究什么';
+    $('create-project').firstElementChild.textContent = busy ? 'Research in progress…' : state.project ? 'Start a new project from this input' : 'Start research';
+    $('message').placeholder = !state.project ? 'Start a project before continuing the conversation' : busy ? 'Wait for the current action to finish…' : generationUnavailable ? 'Live research is unavailable. You can still read saved work and review a pending draft.' : pending ? 'Send feedback under the pending draft on the right to revise it' : needsSelection ? 'Choose A or B on the board before proposing a change' : selected ? 'Change the selected concept, or use the revision box on the right' : 'Add a condition, or say what to research next';
     $('revision-text').disabled = busy || !selected || Boolean(pending) || generationUnavailable;
     $('submit-revision').disabled = busy || !selected || Boolean(pending) || generationUnavailable;
-    $('revision-note').textContent = generationUnavailable ? '真实服务当前不可用，当前无法生成新修改；已确认内容仍可查看。服务可用后，修改仍须审查接受。' : '修改会先成为待审提案。只有你明确接受，才会写入已确认版本。';
-    $('submit-revision').firstElementChild.textContent = busy ? '正在形成待审修改…' : state.project?.revisionRequest?.status === 'needs_input' ? '补充并继续' : '提出修改';
+    $('revision-note').textContent = generationUnavailable ? 'Live research is unavailable, so a new change cannot be generated. Confirmed content can still be read. When service returns, a change still needs your review.' : 'A change becomes a pending proposal first. It is written into the confirmed version only when you accept it.';
+    $('submit-revision').firstElementChild.textContent = busy ? 'Preparing the pending change…' : state.project?.revisionRequest?.status === 'needs_input' ? 'Add the answer and continue' : 'Propose a change';
     document.querySelectorAll('[data-select-concept]').forEach((button) => {
       button.disabled = busy || Boolean(pending && pending.targetConceptId !== button.dataset.selectConcept);
     });
@@ -125,27 +125,27 @@
       const stale = pending?.baseVersion !== state.project?.version || pending?.targetConceptId !== selected?.id;
       feedbackText.disabled = busy || stale || generationUnavailable;
       $('submit-pending-feedback').disabled = busy || stale || generationUnavailable;
-      $('pending-feedback-note').textContent = generationUnavailable ? '真实服务当前不可用；核对版本与选案后可接受或拒绝已有待审稿，当前无法生成反馈修订。' : `反馈会交给${state.project?.mode === 'offline' ? '离线模拟' : '模型'}修订当前第 ${pending?.revisionNumber || 1} 稿。确认版与原待审稿会保留，待新稿生成后由你再次审查。`;
-      $('submit-pending-feedback').firstElementChild.textContent = busy ? '正在按反馈修订…' : '提交反馈并修订待审稿';
+      $('pending-feedback-note').textContent = generationUnavailable ? 'Live research is unavailable. After you check the version and selection, you can accept or reject the pending draft. A feedback revision cannot be generated now.' : `Feedback goes to the ${state.project?.mode === 'offline' ? 'offline simulation' : 'model'} to revise draft ${pending?.revisionNumber || 1}. The confirmed version and the original draft stay until you review the new draft.`;
+      $('submit-pending-feedback').firstElementChild.textContent = busy ? 'Revising from your feedback…' : 'Send feedback and revise the draft';
       $('pending-feedback-form').setAttribute('aria-busy', String(busy));
     }
     $('export-proposal').hidden = !list(state.project?.concepts).length;
     $('export-proposal').disabled = busy;
     $('proposal-board').setAttribute('aria-busy', String(busy));
-    $('create-note').textContent = state.project ? '此处会新建独立项目；回答追问请使用下方对话。' : '输入会作为客户提供信息保留，未经独立核实。';
+    $('create-note').textContent = state.project ? 'This starts a separate project. Answer questions in the conversation below.' : 'What you type is kept as client-provided information. It has not been independently verified.';
   }
 
   function updateMode() {
     const boardMode = state.project?.mode || $('mode').value;
     const isOffline = boardMode === 'offline';
     const live = state.config?.modes?.live;
-    const serviceLabel = !live ? '真实服务状态待确认' : !live.enabled ? '真实服务已关闭' : live.available ? '真实服务已启用' : '真实服务未就绪';
+    const serviceLabel = !live ? 'Live service status is not confirmed yet' : !live.enabled ? 'Live service is off' : live.available ? 'Live service is on' : 'Live service is not ready';
     $('test-label').textContent = serviceLabel;
-    $('mode-explanation').textContent = isOffline ? '离线模拟：用合成数据演示完整流程，不调用真实服务。'
-      : state.project ? `已保存的真实生成项目。${live?.available ? '' : '真实服务暂不可用，可以查看内容、审查已有待审稿。'}` : '将调用真实模型与 Qloo 文化数据。';
+    $('mode-explanation').textContent = isOffline ? 'Offline simulation: synthetic data walks through the flow and does not call a live service.'
+      : state.project ? `Saved project from live generation.${live?.available ? '' : ' Live service is unavailable. You can still read the work and review a pending draft.'}` : 'This will call the live model and Qloo cultural data.';
     const option = $('mode').querySelector('option[value="live"]');
     option.disabled = !live?.available;
-    option.textContent = live?.available ? '真实研究 · 模型 + Qloo' : serviceLabel;
+    option.textContent = live?.available ? 'Live research · model + Qloo' : serviceLabel;
     document.body?.setAttribute('data-mode', boardMode);
     document.body?.setAttribute('data-service', live?.available ? 'on' : 'off');
     updateControls();
@@ -169,12 +169,12 @@
 
   function updateOptionalCount() {
     const count = briefFields.slice(1).filter((field) => $(field).value.trim()).length;
-    $('optional-count').textContent = count ? `已补充 ${count} 项` : '都可以暂时留空';
+    $('optional-count').textContent = count ? `${count} added` : 'All of these can stay empty';
   }
 
   function sourceMarkup(source) {
     if (typeof source !== 'string') return display(source);
-    if (/^local:/.test(source)) return '本地演示数据';
+    if (/^local:/.test(source)) return 'Local demo data';
     try {
       const url = new URL(source);
       if (['https:', 'http:'].includes(url.protocol)) return `<a href="${esc(url.href)}" target="_blank" rel="noopener noreferrer">${esc(source)}</a>`;
@@ -185,37 +185,37 @@
   function formatTime(value) {
     if (!nonempty(value)) return unknown;
     const date = new Date(value);
-    return esc(Number.isNaN(date.getTime()) ? asText(value) : date.toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }));
+    return esc(Number.isNaN(date.getTime()) ? asText(value) : date.toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' }));
   }
 
   function renderContext(project) {
     const brief = project.brief || {};
-    const rows = [['活动目标', brief.goal], ['城市 / 场地', brief.venue], ['预算 · 客户输入', brief.budget], ['必须保留', brief.mustKeep], ['禁止 / 避免', brief.avoid], ['文化参考 · 未验证信号', brief.references]];
-    setHTML($('project-context'), `<details class="context-disclosure" data-key="context-${esc(project.id)}"><summary><strong>需求与边界</strong><span>${list(brief.mustKeep).length ? `必须保留：${esc(list(brief.mustKeep).join(' · '))}` : '查看客户输入与待确认条件'}</span></summary><section class="context-card" aria-label="当前项目需求"><div class="context-lead"><span class="eyebrow">客户提供 · 未独立核实</span><p>${display(brief.request)}</p></div><dl class="context-grid">${rows.map(([name, value]) => `<div class="context-item ${nonempty(value) ? '' : 'unknown'}"><dt>${esc(name)}</dt><dd>${nonempty(value) ? esc(list(value).map(asText).join('；')) : '未知 / 待确认'}</dd></div>`).join('')}</dl></section></details>`);
+    const rows = [['Activity goal', brief.goal], ['City / venue', brief.venue], ['Budget · client input', brief.budget], ['Must keep', brief.mustKeep], ['Do not / avoid', brief.avoid], ['Cultural references · unverified signals', brief.references]];
+    setHTML($('project-context'), `<details class="context-disclosure" data-key="context-${esc(project.id)}"><summary><strong>Brief and limits</strong><span>${list(brief.mustKeep).length ? `Must keep: ${esc(list(brief.mustKeep).join(' · '))}` : 'See the client input and open conditions'}</span></summary><section class="context-card" aria-label="Current project brief"><div class="context-lead"><span class="eyebrow">Provided by the client · not independently verified</span><p>${display(brief.request)}</p></div><dl class="context-grid">${rows.map(([name, value]) => `<div class="context-item ${nonempty(value) ? '' : 'unknown'}"><dt>${esc(name)}</dt><dd>${nonempty(value) ? esc(list(value).map(asText).join('；')) : 'Unknown / to be confirmed'}</dd></div>`).join('')}</dl></section></details>`);
   }
 
   function renderMessages(project) {
     const messages = list(project.messages);
-    const roles = { user: '你 · 客户输入', assistant: '智能体', tool: '工具返回', system: '项目记录' };
-    const messageMarkup = (message) => `<article class="message message-${message.role === 'user' ? 'user' : 'assistant'}"><p class="message-role">${esc(roles[message.role] || '项目记录')}</p><p class="message-text">${esc(message.text || message.content || '')}</p></article>`;
-    setHTML($('messages'), messages.length ? `<div class="latest-message"><span class="eyebrow">${esc(roles[messages.at(-1).role] || '项目记录')} · 最近一条</span><p class="message-preview">${esc(messages.at(-1).text || messages.at(-1).content || '')}</p></div><details class="conversation-history" data-key="conversation-history"><summary>完整对话 <span>${messages.length}</span></summary><div class="history-log">${messages.map(messageMarkup).join('')}</div></details>` : '<p class="empty-chat">智能体正在读取需求。</p>');
+    const roles = { user: 'You · client input', assistant: 'Agent', tool: 'Tool result', system: 'Project record' };
+    const messageMarkup = (message) => `<article class="message message-${message.role === 'user' ? 'user' : 'assistant'}"><p class="message-role">${esc(roles[message.role] || 'Project record')}</p><p class="message-text">${esc(message.text || message.content || '')}</p></article>`;
+    setHTML($('messages'), messages.length ? `<div class="latest-message"><span class="eyebrow">${esc(roles[messages.at(-1).role] || 'Project record')} · latest</span><p class="message-preview">${esc(messages.at(-1).text || messages.at(-1).content || '')}</p></div><details class="conversation-history" data-key="conversation-history"><summary>Full conversation <span>${messages.length}</span></summary><div class="history-log">${messages.map(messageMarkup).join('')}</div></details>` : '<p class="empty-chat">The agent is reading the brief.</p>');
     if (messages.length !== state.messageCount) $('messages').scrollTop = $('messages').scrollHeight;
     state.messageCount = messages.length;
-    $('session-label').textContent = '同一项目会话';
+    $('session-label').textContent = 'Same project';
   }
 
   function renderActions(project) {
     const actions = list(project.actions);
     $('action-count').textContent = String(actions.length);
-    const statusLabels = { running: '进行中', done: '完成', error: '未完成' };
+    const statusLabels = { running: 'In progress', done: 'Done', error: 'Not finished' };
     const markup = (action) => {
       const tool = action.type === 'tool';
-      const name = tool ? toolLabels[action.label] || (/^qloo_/.test(action.label || '') ? '查询文化数据' : '调用工具') : action.label || '行动';
-      const detail = tool ? action.status === 'error' ? '未成功，没有作为证据使用。' : '' : action.detail;
+      const name = tool ? toolLabels[action.label] || (/^qloo_/.test(action.label || '') ? 'Cultural data query' : 'Tool call') : action.label || 'Action';
+      const detail = tool ? action.status === 'error' ? 'It did not succeed and was not used as evidence.' : '' : action.detail;
       const time = action.time ? new Date(action.time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '';
-      return `<li class="action-${esc(action.status || 'done')}"><p class="action-name">${esc(name)}</p>${nonempty(detail) ? `<p class="action-detail">${esc(asText(detail))}</p>` : ''}<p class="action-meta">${esc([statusLabels[action.status] || '完成', time].filter(Boolean).join(' · '))}</p></li>`;
+      return `<li class="action-${esc(action.status || 'done')}"><p class="action-name">${esc(name)}</p>${nonempty(detail) ? `<p class="action-detail">${esc(asText(detail))}</p>` : ''}<p class="action-meta">${esc([statusLabels[action.status] || 'Done', time].filter(Boolean).join(' · '))}</p></li>`;
     };
-    setHTML($('actions'), actions.length ? actions.map(markup).join('') : '<li class="empty-activity">尚无行动记录。</li>');
+    setHTML($('actions'), actions.length ? actions.map(markup).join('') : '<li class="empty-activity">No activity yet.</li>');
   }
 
   function renderQuestions(project) {
@@ -224,15 +224,15 @@
     const panel = $('questions-panel');
     if (reference) {
       panel.hidden = false;
-      setHTML(panel, `<h3 id="questions-heading">确认你说的是哪一个</h3><p>${esc(reference.originalInput)}</p><p>${reference.synthetic ? '以下是演示用的模拟候选。' : '以下候选来自 Qloo 返回。'}选定之前不会写入确认。</p>${reference.candidates.map(candidate => `<article class="reference-candidate"><h4>${esc(candidate.name)}</h4><p>${esc(entityTypeLabel(candidate.type) || '类型未知')} · ${nonempty(candidate.release_year) ? esc(candidate.release_year) : '年份未知'}</p>${candidate.description ? `<p>${esc(candidate.description)}</p>` : ''}<button type="button" data-reference-choice="${esc(candidate.id)}" ${isBusy() ? 'disabled' : ''}>选择此实体</button></article>`).join('')}<p>${reference.status === 'needs_details' ? '参考尚未解决，请补充名称、类型、年份或创作者。' : '只有明确选择当前候选才会写入用户确认。'}推荐与最终设计在此期间暂停。</p>${reference.status === 'pending' ? '<button type="button" data-reference-cancel>取消选择，补充信息</button>' : ''}<form id="reference-details-form"><label for="reference-details">补充或更正这个参考</label><textarea id="reference-details" rows="2" required></textarea><button type="submit">补充并重新核实</button></form>`);
+      setHTML(panel, `<h3 id="questions-heading">Which one did you mean</h3><p>${esc(reference.originalInput)}</p><p>${reference.synthetic ? 'These are simulated demo candidates. ' : 'These candidates came back from Qloo. '}Nothing is confirmed until you choose.</p>${reference.candidates.map(candidate => `<article class="reference-candidate"><h4>${esc(candidate.name)}</h4><p>${esc(entityTypeLabel(candidate.type) || 'Unknown type')} · ${nonempty(candidate.release_year) ? esc(candidate.release_year) : 'Year unknown'}</p>${candidate.description ? `<p>${esc(candidate.description)}</p>` : ''}<button type="button" data-reference-choice="${esc(candidate.id)}" ${isBusy() ? 'disabled' : ''}>Choose this entity</button></article>`).join('')}<p>${reference.status === 'needs_details' ? 'This reference is still unresolved. Add a name, type, year, or creator.' : 'Only an explicit choice among the current candidates is recorded as your confirmation.'}Recommendations and the final design stay paused until then.</p>${reference.status === 'pending' ? '<button type="button" data-reference-cancel>Cancel the choice and add detail</button>' : ''}<form id="reference-details-form"><label for="reference-details">Add or correct this reference</label><textarea id="reference-details" rows="2" required></textarea><button type="submit">Add detail and check again</button></form>`);
       return;
     }
     panel.hidden = questions.length === 0;
     const question = questions[0];
-    const fieldLabel = { request: '原需求', brand: '品牌', goal: '目标', references: '文化参考', venue: '城市与场地', budget: '预算', mustKeep: '必须保留项', avoid: '禁止项' }[question?.field];
+    const fieldLabel = { request: 'Original request', brand: 'Brand', goal: 'Goal', references: 'Cultural references', venue: 'City and venue', budget: 'Budget', mustKeep: 'Must-keep items', avoid: 'Avoid items' }[question?.field];
     const value = project.brief?.[question?.field];
-    const targets = question?.field === 'request' ? '<label for="clarification-update-field">明确修改哪项条件</label><select id="clarification-update-field"><option value="request">原需求文字补充或修订</option><option value="venue">城市与场地</option><option value="budget">预算</option><option value="mustKeep">必须保留项</option><option value="avoid">禁止项</option></select>' : '';
-    setHTML(panel, questions.length ? `<h3 id="questions-heading">下一步需要确认</h3><ul>${questions.map((question) => `<li>${esc(typeof question === 'string' ? question : question.text)}</li>`).join('')}</ul><p>在左侧对话补充答案；原始需求与已有条件会保留。</p>${fieldLabel ? `<details><summary>本次回答包含明确修改</summary><label><input id="clarification-revise" type="checkbox">${question.field === 'request' ? '将本次答案记录为对原需求的明确修改；保留原文及未提及的条件' : `明确更新${fieldLabel}，使用下方完整值替换当前值`}</label>${targets}<label id="clarification-value-label" for="clarification-value"${targets ? ' hidden' : ''}>修改后的${fieldLabel}${Array.isArray(value) ? '（每行一项；清空表示明确取消这些条目）' : ''}</label><textarea id="clarification-value" rows="3"${targets ? ' hidden' : ''}>${targets ? '' : esc(Array.isArray(value) ? value.join('\n') : value)}</textarea></details>` : ''}` : '');
+    const targets = question?.field === 'request' ? '<label for="clarification-update-field">Which condition this answer changes</label><select id="clarification-update-field"><option value="request">Add to or revise the original request</option><option value="venue">City and venue</option><option value="budget">Budget</option><option value="mustKeep">Must-keep items</option><option value="avoid">Avoid items</option></select>' : '';
+    setHTML(panel, questions.length ? `<h3 id="questions-heading">Confirm this next</h3><ul>${questions.map((question) => `<li>${esc(typeof question === 'string' ? question : question.text)}</li>`).join('')}</ul><p>Answer in the conversation on the left. The original request and existing conditions stay.</p>${fieldLabel ? `<details><summary>This answer includes an explicit change</summary><label><input id="clarification-revise" type="checkbox">${question.field === 'request' ? 'Record this answer as an explicit change to the original request. Keep the original text and conditions you did not mention.' : `Explicitly update ${fieldLabel}, replacing the current value with the complete value below`}</label>${targets}<label id="clarification-value-label" for="clarification-value"${targets ? ' hidden' : ''}>Updated ${fieldLabel}${Array.isArray(value) ? ' (one item per line; empty means these items are explicitly removed)' : ''}</label><textarea id="clarification-value" rows="3"${targets ? ' hidden' : ''}>${targets ? '' : esc(Array.isArray(value) ? value.join('\n') : value)}</textarea></details>` : ''}` : '');
   }
 
   function entityTypeLabel(type) {
@@ -243,29 +243,29 @@
 
   function entityMarkup(entity) {
     const type = entityTypeLabel(entity.type);
-    return `<li><span class="entity-name">${display(entity.name)}</span>${entity.synthetic ? '<span class="entity-type synthetic">合成</span>' : type ? `<span class="entity-type">${esc(type)}</span>` : ''}</li>`;
+    return `<li><span class="entity-name">${display(entity.name)}</span>${entity.synthetic ? '<span class="entity-type synthetic">Synthetic</span>' : type ? `<span class="entity-type">${esc(type)}</span>` : ''}</li>`;
   }
 
   function renderEvidence(project) {
     const evidence = list(project.evidence);
     const historical = evidence.filter((item) => !item.synthetic && project.mode === 'offline').length;
-    $('evidence-count').textContent = evidence.length ? `${evidence.length} 条${historical ? ` · ${historical} 条历史真实证据` : project.mode === 'offline' ? ' · 合成数据' : ''}` : '尚无可用证据';
+    $('evidence-count').textContent = evidence.length ? `${evidence.length}${historical ? ` · ${historical}  historical live evidence` : project.mode === 'offline' ? ' · synthetic data' : ''}` : 'No usable evidence yet';
     if (!evidence.length) {
       const blocked = ['insufficient_evidence', 'error'].includes(project.status?.phase);
-      setHTML($('evidence'), `<div class="empty-evidence"><span class="empty-symbol" aria-hidden="true">${blocked ? '—' : '↳'}</span><div><strong>${blocked ? '没有可用于概念的证据' : '先确认输入，再检查返回了什么'}</strong><p>${blocked ? '查询失败或结果不相关时，保留限制与行动记录，不补造文化关联。' : '证据会显示实际输入、返回内容与来源；缺失内容保留为未知。'}</p></div></div>`);
+      setHTML($('evidence'), `<div class="empty-evidence"><span class="empty-symbol" aria-hidden="true">${blocked ? '—' : '↳'}</span><div><strong>${blocked ? 'No evidence that can support a concept' : 'Confirm the input, then see what came back'}</strong><p>${blocked ? 'When a query fails or the result is irrelevant, the limits and activity stay. Cultural associations are not invented.' : 'Evidence shows the actual input, what came back, and the source. Missing content stays unknown.'}</p></div></div>`);
       return;
     }
     setHTML($('evidence'), evidence.map((item, index) => {
       const workflow = item.query?.workflow;
-      const kind = workflow === 'describe' ? '实体描述' : workflow === 'recommend' ? '文化关联' : '文化研究';
-      const badge = item.synthetic ? '合成数据 · 非真实证据' : project.mode === 'offline' ? '历史真实证据 · 本轮未复查' : 'Qloo 返回';
+      const kind = workflow === 'describe' ? 'Entity description' : workflow === 'recommend' ? 'Cultural association' : 'Cultural research';
+      const badge = item.synthetic ? 'Synthetic · not live evidence' : project.mode === 'offline' ? 'Earlier live evidence · not rechecked this round' : 'Returned by Qloo';
       const proxy = item.proxyConfirmation || item.context?.proxyConfirmation;
       return `<article class="evidence-card" id="evidence-${esc(item.id)}" aria-labelledby="evidence-title-${index}">
-        <div class="evidence-card-header"><span class="evidence-index">${index + 1}</span><h4 class="evidence-title" id="evidence-title-${index}">${esc(item.title || `${kind}记录`)}</h4><span class="evidence-badge${item.synthetic ? ' synthetic' : ''}">${badge}</span></div>
-        <p class="evidence-query">${display(item.query?.designQuestion || (typeof item.query === 'string' ? item.query : '设计问题未记录'))}</p>
-        <div class="evidence-body"><section class="evidence-block"><h5>输入</h5><ul class="entity-list">${list(item.inputReferences).length ? list(item.inputReferences).map(entityMarkup).join('') : `<li>${unknown}</li>`}</ul></section><section class="evidence-block"><h5>${kind}返回 · ${list(item.returnedEntities).length} 项</h5><ul class="entity-list">${list(item.returnedEntities).length ? list(item.returnedEntities).map(entityMarkup).join('') : `<li>${unknown}</li>`}</ul></section></div>
-        <div class="evidence-boundary"><span class="boundary-label">适用边界</span><span>${display(item.boundary)}</span></div>
-        <dl class="evidence-meta"><div><dt>来源</dt><dd>${sourceMarkup(item.source)}</dd></div><div><dt>查询时间</dt><dd>${formatTime(item.queriedAt)}</dd></div>${nonempty(proxy) ? `<div><dt>代理与确认</dt><dd>${esc(asText(proxy))}</dd></div>` : ''}</dl>
+        <div class="evidence-card-header"><span class="evidence-index">${index + 1}</span><h4 class="evidence-title" id="evidence-title-${index}">${esc(item.title || `${kind} record`)}</h4><span class="evidence-badge${item.synthetic ? ' synthetic' : ''}">${badge}</span></div>
+        <p class="evidence-query">${display(item.query?.designQuestion || (typeof item.query === 'string' ? item.query : 'Design question was not recorded'))}</p>
+        <div class="evidence-body"><section class="evidence-block"><h5>Input</h5><ul class="entity-list">${list(item.inputReferences).length ? list(item.inputReferences).map(entityMarkup).join('') : `<li>${unknown}</li>`}</ul></section><section class="evidence-block"><h5>${kind} returned · ${list(item.returnedEntities).length}</h5><ul class="entity-list">${list(item.returnedEntities).length ? list(item.returnedEntities).map(entityMarkup).join('') : `<li>${unknown}</li>`}</ul></section></div>
+        <div class="evidence-boundary"><span class="boundary-label">Boundary</span><span>${display(item.boundary)}</span></div>
+        <dl class="evidence-meta"><div><dt>Source</dt><dd>${sourceMarkup(item.source)}</dd></div><div><dt>Queried</dt><dd>${formatTime(item.queriedAt)}</dd></div>${nonempty(proxy) ? `<div><dt>Proxy and confirmation</dt><dd>${esc(asText(proxy))}</dd></div>` : ''}</dl>
       </article>`;
     }).join(''));
   }
@@ -292,27 +292,27 @@
     const target = list(project.evidence)[index];
     const numeric = link.basis === 'affinity' || /affinity|popularity|score|rank|percentile/i.test(link.observedField || '');
     const description = link.basis === 'description' || (!numeric && /description|biography|synopsis|summary/i.test(link.observedField || ''));
-    const basis = numeric ? '文化关联数值' : description ? '实体描述字段' : '实际返回字段';
+    const basis = numeric ? 'Cultural association value' : description ? 'Entity description field' : 'Returned field';
     const supportingDescriptions = numeric ? descriptionReferences(project, link.entityId) : [];
     return `<div class="inference-item">
-      ${target ? `<a class="evidence-link" href="#evidence-${esc(link.evidenceId)}">证据 ${index + 1} · ${basis} ↗</a>` : '<span class="unknown-note">证据引用未知</span>'}
-      <p class="trace-step fact"><span class="trace-label">数据事实</span>${display(link.observation)}</p>
-      <p class="trace-step"><span class="trace-label">设计推断</span>${display(link.inspiration)}</p>
-      ${numeric ? '<p class="inference-warning">这是数值关联，单凭它不能证明叙事或参与机制成立。</p>' : ''}
-      ${nonempty(link.observedField) ? `<p class="ref-field">返回字段 <code>${esc(link.observedField)}</code>${['string', 'number', 'boolean'].includes(typeof link.observedValue) ? ` = ${esc(link.observedValue)}` : ''}</p>` : ''}
-      ${supportingDescriptions.length ? `<details class="evidence-detail" data-key="description-${esc(key)}"><summary>同一实体的描述 · 未绑定到本条主张</summary><div class="evidence-detail-content">${supportingDescriptions.map((ref) => `<a class="evidence-link" href="#evidence-${esc(ref.card.id)}">实体描述记录 ↗</a><p>${esc(ref.value)}</p>`).join('')}</div></details>` : ''}
+      ${target ? `<a class="evidence-link" href="#evidence-${esc(link.evidenceId)}">Evidence ${index + 1} · ${basis} ↗</a>` : '<span class="unknown-note">Evidence reference unknown</span>'}
+      <p class="trace-step fact"><span class="trace-label">Data fact</span>${display(link.observation)}</p>
+      <p class="trace-step"><span class="trace-label">Design inference</span>${display(link.inspiration)}</p>
+      ${numeric ? '<p class="inference-warning">This is a numeric association. By itself it does not prove a story or a way of participating.</p>' : ''}
+      ${nonempty(link.observedField) ? `<p class="ref-field">Returned field <code>${esc(link.observedField)}</code>${['string', 'number', 'boolean'].includes(typeof link.observedValue) ? ` = ${esc(link.observedValue)}` : ''}</p>` : ''}
+      ${supportingDescriptions.length ? `<details class="evidence-detail" data-key="description-${esc(key)}"><summary>Description of the same entity · not tied to this claim</summary><div class="evidence-detail-content">${supportingDescriptions.map((ref) => `<a class="evidence-link" href="#evidence-${esc(ref.card.id)}">Entity description ↗</a><p>${esc(ref.value)}</p>`).join('')}</div></details>` : ''}
     </div>`;
   }
 
   function organizationText(value) {
     if (organizationLabels[value]) return organizationLabels[value];
-    if (/双人/.test(value || '') && /角色交换/.test(value)) return '双人 · 角色交换';
-    if (/单人/.test(value || '') && /独立通关/.test(value)) return '单人 · 独立通关';
+    if (/双人/.test(value || '') && /角色交换/.test(value)) return 'Pair · role swap';
+    if (/单人/.test(value || '') && /独立通关/.test(value)) return 'Individual · independent run';
     if (/[\u4e00-\u9fff]/.test(value || '')) {
       const first = value.split(/[：:＋+；;]/)[0];
       return first.length > 20 ? `${first.slice(0, 19)}…` : first;
     }
-    return value ? '参与组织见下方说明' : '参与方式待确认';
+    return value ? 'See the description below' : 'Participation is not confirmed';
   }
 
   function renderConcepts(project) {
@@ -321,61 +321,61 @@
       const phase = project.status?.phase;
       if (['insufficient_evidence', 'error'].includes(phase)) {
         setHTML($('concepts'), phase === 'error'
-          ? '<div class="no-concepts"><h4>本轮尚无可审阅概念</h4><p>请查看上方说明与左侧行动记录；已有证据和需求已保留。</p></div>'
-          : '<div class="no-concepts"><h4>证据不足，暂未提出概念</h4><p>请查看证据边界与开放问题，不补造研究依据。</p></div>');
+          ? '<div class="no-concepts"><h4>Nothing to review this round</h4><p>See the note above and the activity on the left. Existing evidence and the brief were kept.</p></div>'
+          : '<div class="no-concepts"><h4>Not enough evidence to propose concepts</h4><p>See the evidence boundary and open questions. Research is not invented.</p></div>');
       } else {
-        setHTML($('concepts'), ['A', 'B'].map((letter) => `<article class="concept-placeholder"><span class="concept-letter">${letter}</span><h4>${letter === 'A' ? '第一种参与机制' : '另一种产品互动'}</h4><p>${phase === 'needs_input' ? '补充关键条件后，继续研究与概念探索。' : '智能体会基于当前项目记录生成可审查的概念。'}</p><div class="placeholder-rule"></div><span>${phase === 'busy' ? '正在研究' : '等待关键条件'}</span></article>`).join(''));
+        setHTML($('concepts'), ['A', 'B'].map((letter) => `<article class="concept-placeholder"><span class="concept-letter">${letter}</span><h4>${letter === 'A' ? 'One way to participate' : 'Another way to meet the product'}</h4><p>${phase === 'needs_input' ? 'After the missing condition, research and concepts continue.' : 'The agent will propose concepts that can be reviewed from the current project record.'}</p><div class="placeholder-rule"></div><span>${phase === 'busy' ? 'Researching' : 'Waiting for a key condition'}</span></article>`).join(''));
       }
       return;
     }
     setHTML($('concepts'), concepts.map((concept, index) => {
       const links = list(concept.evidenceLinks);
       const descriptiveOnly = links.length > 0 && links.every((link) => list(project.evidence).find((item) => item.id === link.evidenceId)?.query?.workflow === 'describe');
-      const draftNotice = descriptiveOnly ? '<p class="evidence-boundary"><strong>基于实体描述的讨论草案 · 不构成受众亲和依据</strong></p>' : project.status?.phase === 'insufficient_evidence' ? `<p class="evidence-boundary"><strong>${links.length ? '有限证据支持的讨论草案' : '无证据支持的讨论草案'}</strong></p>` : '';
+      const draftNotice = descriptiveOnly ? '<p class="evidence-boundary"><strong>Discussion draft from an entity description · not audience-affinity evidence</strong></p>' : project.status?.phase === 'insufficient_evidence' ? `<p class="evidence-boundary"><strong>${links.length ? 'Discussion draft with limited evidence' : 'Discussion draft without supporting evidence'}</strong></p>` : '';
       const organizationLabel = organizationText(concept.mechanism?.organization);
       const linkedEvidence = links.map((link, linkIndex) => referenceMarkup(project, link, `${concept.id}-${linkIndex}`)).join('');
       const selected = project.selectedConceptId === concept.id;
       const firstReference = links[0];
       const evidenceIndex = firstReference ? list(project.evidence).findIndex((item) => item.id === firstReference.evidenceId) : -1;
       return `<article class="concept-card ${selected ? 'concept-selected' : ''}" aria-labelledby="concept-title-${index}">
-        <div class="concept-topline"><span class="concept-letter">${String.fromCharCode(65 + index)}</span><span class="concept-sheet-label">${selected ? '已选方向' : '概念方向'}<span class="mechanism-label">${esc(organizationLabel)}</span></span><span class="concept-state">${selected ? '已选择' : ''}</span></div>
+        <div class="concept-topline"><span class="concept-letter">${String.fromCharCode(65 + index)}</span><span class="concept-sheet-label">${selected ? 'Selected direction' : 'Concept direction'}<span class="mechanism-label">${esc(organizationLabel)}</span></span><span class="concept-state">${selected ? 'Selected' : ''}</span></div>
         <div class="concept-intro"><h4 class="concept-title" id="concept-title-${index}">${display(concept.title)}</h4><p class="concept-claim">${display(concept.coreClaim)}</p>${draftNotice}</div>
-        <div class="concept-select-row"><button type="button" class="select-concept ${selected ? 'selected' : ''}" data-select-concept="${esc(concept.id)}" aria-pressed="${selected}">${selected ? '已选择 · 查看修改区' : `选择概念 ${String.fromCharCode(65 + index)} 继续`}<span aria-hidden="true">↗</span></button></div>
-        <dl class="concept-at-glance"><div><dt>参与组织</dt><dd>${display(concept.mechanism?.organization ? organizationLabel : null)}</dd></div><div><dt>产品触点</dt><dd><ul>${list(concept.productTouchpoints).slice(0, 2).map((touchpoint) => `<li>${display(touchpoint)}</li>`).join('') || `<li>${unknown}</li>`}</ul>${list(concept.productTouchpoints).length > 2 ? `<span class="scan-note">另有 ${list(concept.productTouchpoints).length - 2} 项，见完整概念</span>` : ''}</dd></div><div><dt>关键依据</dt><dd><p class="scan-evidence">${firstReference ? display(firstReference.observation || firstReference.observedField) : '尚无证据引用 · 不代表已完成研究'}</p>${evidenceIndex >= 0 ? `<a class="scan-evidence-link" href="#evidence-${esc(firstReference.evidenceId)}">证据 ${evidenceIndex + 1} · 核对来源 ↗</a>` : ''}</dd></div></dl>
-        <details class="concept-full" data-key="full-${esc(concept.id)}"><summary>阅读完整概念<span>机制 · 旅程 · 风险</span></summary>
-          <section class="concept-part"><h5 class="part-title">核心主张</h5><p class="mechanism-description">${display(concept.coreClaim)}</p></section>
-          <section class="concept-part"><h5 class="part-title">参与机制</h5><p class="mechanism-description">${display(concept.mechanism?.description)}</p></section>
-          <section class="concept-part"><h5 class="part-title">参与组织与时间安排</h5><p class="mechanism-description">${display(organizationLabels[concept.mechanism?.organization] || concept.mechanism?.organization)}</p><p class="concept-duration">时间安排为方案设想，尚未实测。</p></section>
-          <section class="concept-part"><h5 class="part-title">如何接触产品</h5><ul class="touchpoint-list">${list(concept.productTouchpoints).length ? list(concept.productTouchpoints).map((touchpoint) => `<li>${display(touchpoint)}</li>`).join('') : `<li>${unknown}</li>`}</ul></section>
-          <section class="concept-part"><h5 class="part-title">从到场到离开的完整旅程</h5><ol class="journey">${list(concept.journey).length ? list(concept.journey).map((step) => `<li><span class="journey-stage">${esc(step.stage || '阶段未知')}</span><p class="journey-action">${display(step.action)}</p></li>`).join('') : `<li>${unknown}</li>`}</ol></section>
-          <section class="concept-part concept-cautions"><h5 class="part-title">关键风险 / 待确认</h5><ul class="question-list">${list(concept.openQuestions).length ? list(concept.openQuestions).map((question) => `<li>${display(question)}</li>`).join('') : `<li>尚未记录；不代表已完成验证。</li>`}</ul></section>
+        <div class="concept-select-row"><button type="button" class="select-concept ${selected ? 'selected' : ''}" data-select-concept="${esc(concept.id)}" aria-pressed="${selected}">${selected ? 'Selected · open the revision' : `Choose concept ${String.fromCharCode(65 + index)}`}<span aria-hidden="true">↗</span></button></div>
+        <dl class="concept-at-glance"><div><dt>Participation</dt><dd>${display(concept.mechanism?.organization ? organizationLabel : null)}</dd></div><div><dt>Product contact</dt><dd><ul>${list(concept.productTouchpoints).slice(0, 2).map((touchpoint) => `<li>${display(touchpoint)}</li>`).join('') || `<li>${unknown}</li>`}</ul>${list(concept.productTouchpoints).length > 2 ? `<span class="scan-note">${list(concept.productTouchpoints).length - 2} more in the full concept</span>` : ''}</dd></div><div><dt>Key evidence</dt><dd><p class="scan-evidence">${firstReference ? display(firstReference.observation || firstReference.observedField) : 'No evidence citation · research is not finished'}</p>${evidenceIndex >= 0 ? `<a class="scan-evidence-link" href="#evidence-${esc(firstReference.evidenceId)}">Evidence ${evidenceIndex + 1} · check the source ↗</a>` : ''}</dd></div></dl>
+        <details class="concept-full" data-key="full-${esc(concept.id)}"><summary>Read the full concept<span>Mechanism · journey · risks</span></summary>
+          <section class="concept-part"><h5 class="part-title">Core claim</h5><p class="mechanism-description">${display(concept.coreClaim)}</p></section>
+          <section class="concept-part"><h5 class="part-title">Participation mechanism</h5><p class="mechanism-description">${display(concept.mechanism?.description)}</p></section>
+          <section class="concept-part"><h5 class="part-title">Participation and timing</h5><p class="mechanism-description">${display(organizationLabels[concept.mechanism?.organization] || concept.mechanism?.organization)}</p><p class="concept-duration">The timing is a proposal, not something that has been tried.</p></section>
+          <section class="concept-part"><h5 class="part-title">How people meet the product</h5><ul class="touchpoint-list">${list(concept.productTouchpoints).length ? list(concept.productTouchpoints).map((touchpoint) => `<li>${display(touchpoint)}</li>`).join('') : `<li>${unknown}</li>`}</ul></section>
+          <section class="concept-part"><h5 class="part-title">The journey from arrival to leaving</h5><ol class="journey">${list(concept.journey).length ? list(concept.journey).map((step) => `<li><span class="journey-stage">${esc(step.stage || 'Stage unknown')}</span><p class="journey-action">${display(step.action)}</p></li>`).join('') : `<li>${unknown}</li>`}</ol></section>
+          <section class="concept-part concept-cautions"><h5 class="part-title">Key risks / still to confirm</h5><ul class="question-list">${list(concept.openQuestions).length ? list(concept.openQuestions).map((question) => `<li>${display(question)}</li>`).join('') : `<li>Not recorded. That does not mean it was verified.</li>`}</ul></section>
         </details>
-        <details class="concept-part concept-detail" data-key="culture-${esc(concept.id)}"><summary>文化依据与设计推断 · ${links.length} 条引用</summary>${linkedEvidence || '<p class="unknown-note">证据不足 · 尚无可追溯的设计关联。</p>'}<h5 class="effects-label">未验证的效果</h5><ul class="effects-list">${list(concept.unverifiedEffects).length ? list(concept.unverifiedEffects).map((effect) => `<li>${display(effect)}</li>`).join('') : '<li>吸引力、参与度与转化均未验证。</li>'}</ul></details>
+        <details class="concept-part concept-detail" data-key="culture-${esc(concept.id)}"><summary>Cultural basis and design inference · ${links.length} citations</summary>${linkedEvidence || '<p class="unknown-note">Not enough evidence · no traceable design link yet.</p>'}<h5 class="effects-label">Unverified effects</h5><ul class="effects-list">${list(concept.unverifiedEffects).length ? list(concept.unverifiedEffects).map((effect) => `<li>${display(effect)}</li>`).join('') : '<li>Appeal, participation, and conversion are all unverified.</li>'}</ul></details>
       </article>`;
     }).join(''));
-    $('concept-selection-label').textContent = project.selectedConceptId ? `${conceptLetter(project, project.selectedConceptId)} 已选 · v${project.version}` : '选择一个方向，继续修改';
+    $('concept-selection-label').textContent = project.selectedConceptId ? `${conceptLetter(project, project.selectedConceptId)} selected · v${project.version}` : 'Choose a direction to revise';
   }
 
   const revisionFields = {
-    title: '概念名称', coreClaim: '核心主张', mechanism: '参与机制', journey: '体验旅程',
-    productTouchpoints: '产品接触点', evidenceLinks: '文化依据与设计推断', openQuestions: '开放问题', unverifiedEffects: '未验证效果'
+    title: 'Concept name', coreClaim: 'Core claim', mechanism: 'Participation mechanism', journey: 'Experience journey',
+    productTouchpoints: 'Product contact', evidenceLinks: 'Cultural basis and design inference', openQuestions: 'Open questions', unverifiedEffects: 'Unverified effects'
   };
 
   function fieldValueMarkup(project, field, value, key) {
-    if (value === null || value === undefined) return '<p class="unknown-note">原记录未提供</p>';
+    if (value === null || value === undefined) return '<p class="unknown-note">The saved record did not include this</p>';
     if (field === 'mechanism') return `<p class="diff-organization">${display(value.organization)}</p><p>${display(value.description)}</p>`;
     if (field === 'journey') return `<ol class="diff-list">${list(value).map((step) => `<li><strong>${display(step.stage)}</strong><p>${display(step.action)}</p></li>`).join('')}</ol>`;
-    if (field === 'evidenceLinks') return list(value).length ? list(value).map((link, index) => referenceMarkup(project, link, `${key}-${index}`)).join('') : '<p>无已记录引用</p>';
-    if (Array.isArray(value)) return value.length ? `<ul class="diff-list">${value.map((item) => `<li>${display(item)}</li>`).join('')}</ul>` : '<p>空列表</p>';
+    if (field === 'evidenceLinks') return list(value).length ? list(value).map((link, index) => referenceMarkup(project, link, `${key}-${index}`)).join('') : '<p>No recorded citation</p>';
+    if (Array.isArray(value)) return value.length ? `<ul class="diff-list">${value.map((item) => `<li>${display(item)}</li>`).join('')}</ul>` : '<p>Empty list</p>';
     return `<p>${display(value)}</p>`;
   }
 
   function revisionDiffMarkup(project, changes, key, beforeLabel, afterLabel) {
-    return `<div class="field-diffs">${list(changes).map((change, index) => `<article class="field-diff"><h5>${esc(revisionFields[change.field] || change.field)}</h5><div class="diff-columns"><section class="diff-before"><h6>${esc(beforeLabel)}</h6>${fieldValueMarkup(project, change.field, change.before, `${key}-${index}-before`)}</section><section class="diff-after"><h6>${esc(afterLabel)}</h6>${fieldValueMarkup(project, change.field, change.after, `${key}-${index}-after`)}</section></div><div class="diff-reason"><p><strong>修改理由</strong>${display(change.reason)}</p>${list(change.evidenceRefs).length ? `<details class="evidence-detail" data-key="change-evidence-${esc(key)}-${index}"><summary>核对本项依据 · ${change.evidenceRefs.length} 条实际引用</summary>${change.evidenceRefs.map((link, refIndex) => referenceMarkup(project, link, `${key}-${index}-ref-${refIndex}`)).join('')}</details>` : '<p class="unknown-note">本项未附文化证据；须按客户要求或设计推断审查。</p>'}</div></article>`).join('')}</div>`;
+    return `<div class="field-diffs">${list(changes).map((change, index) => `<article class="field-diff"><h5>${esc(revisionFields[change.field] || change.field)}</h5><div class="diff-columns"><section class="diff-before"><h6>${esc(beforeLabel)}</h6>${fieldValueMarkup(project, change.field, change.before, `${key}-${index}-before`)}</section><section class="diff-after"><h6>${esc(afterLabel)}</h6>${fieldValueMarkup(project, change.field, change.after, `${key}-${index}-after`)}</section></div><div class="diff-reason"><p><strong>Reason</strong>${display(change.reason)}</p>${list(change.evidenceRefs).length ? `<details class="evidence-detail" data-key="change-evidence-${esc(key)}-${index}"><summary>Check this evidence · ${change.evidenceRefs.length} citations</summary>${change.evidenceRefs.map((link, refIndex) => referenceMarkup(project, link, `${key}-${index}-ref-${refIndex}`)).join('')}</details>` : '<p class="unknown-note">This item cites no cultural evidence. Review it as a client request or a design inference.</p>'}</div></article>`).join('')}</div>`;
   }
 
   function revisionBoundariesMarkup(revision) {
-    return `<div class="pending-boundaries"><section><h5>受影响的环节</h5><ul>${list(revision.impact).map((item) => `<li>${display(item)}</li>`).join('') || '<li>未说明</li>'}</ul></section><section><h5>仍然未知</h5><ul>${list(revision.unknowns).map((item) => `<li>${display(item)}</li>`).join('') || '<li>未记录不代表已验证</li>'}</ul></section></div>`;
+    return `<div class="pending-boundaries"><section><h5>What this affects</h5><ul>${list(revision.impact).map((item) => `<li>${display(item)}</li>`).join('') || '<li>Not stated</li>'}</ul></section><section><h5>Still unknown</h5><ul>${list(revision.unknowns).map((item) => `<li>${display(item)}</li>`).join('') || '<li>Unrecorded does not mean verified</li>'}</ul></section></div>`;
   }
 
   function renderRevision(project) {
@@ -390,14 +390,14 @@
     const generationUnavailable = project.mode === 'live' && !state.config?.modes?.live?.available;
     $('revision-workspace').hidden = !selected && !pending;
     $('revision-workspace').className = `revision-section${pending ? ' has-pending' : ''}`;
-    $('revision-heading').textContent = pending ? '这次修改，由你决定。' : generationUnavailable ? '已选方向与修改记录' : '继续打磨这个方向';
+    $('revision-heading').textContent = pending ? 'You decide this change.' : generationUnavailable ? 'Selected direction and revision history' : 'Keep shaping this direction';
     $('revision-form').hidden = Boolean(pending);
-    $('confirmed-version').textContent = `已确认 v${project.version}`;
-    $('revision-selection').textContent = selected ? `${conceptLetter(project, selected.id)} · ${selected.title}` : '先选回待审修改所属的概念，再接受修改。';
+    $('confirmed-version').textContent = `Confirmed v${project.version}`;
+    $('revision-selection').textContent = selected ? `${conceptLetter(project, selected.id)} · ${selected.title}` : 'Select the concept this draft belongs to before accepting it.';
     const locked = list(project.lockedFields);
     const lockedChanges = list(pending?.changes).filter((change) => locked.includes(change.field));
     $('lock-panel').hidden = !selected;
-    setHTML($('lock-panel'), selected ? `<p class="field-label">锁定已确认内容<span>锁定后，任何修改稿都不能改动该项</span></p><div class="lock-fields">${Object.entries(revisionFields).map(([field, label]) => `<button type="button" class="lock-field${locked.includes(field) ? ' locked' : ''}" data-lock-field="${esc(field)}" aria-pressed="${locked.includes(field)}"><span class="lock-icon" aria-hidden="true"></span>${esc(label)}</button>`).join('')}</div>` : '');
+    setHTML($('lock-panel'), selected ? `<p class="field-label">Lock confirmed content<span>Once locked, no draft can change this field</span></p><div class="lock-fields">${Object.entries(revisionFields).map(([field, label]) => `<button type="button" class="lock-field${locked.includes(field) ? ' locked' : ''}" data-lock-field="${esc(field)}" aria-pressed="${locked.includes(field)}"><span class="lock-icon" aria-hidden="true"></span>${esc(label)}</button>`).join('')}</div>` : '');
     $('offline-revision-controls').hidden = project.mode !== 'offline';
     if (state.draftConceptId !== project.selectedConceptId) {
       state.draftConceptId = project.selectedConceptId;
@@ -409,18 +409,18 @@
     feedback.className = 'revision-feedback';
     if (request && ['running', 'needs_input', 'conflict', 'interrupted', 'error'].includes(request.status)) {
       const labels = feedbackRequest
-        ? { running: '正在按你的反馈修订待审稿', needs_input: '修订待审稿前还需要补充条件', conflict: '本次待审反馈存在冲突', interrupted: '上次待审反馈已中断', error: '本次反馈未形成新待审稿' }
-        : { running: '正在形成待审修改', needs_input: '还需要确认一个条件', conflict: '修改与现有条件冲突', interrupted: '上次修改已中断', error: '本次修改未完成' };
+        ? { running: 'Revising the pending draft from your feedback', needs_input: 'One condition is still needed before revising the draft', conflict: 'This feedback conflicts with an existing condition', interrupted: 'The last feedback revision was interrupted', error: 'This feedback did not produce a new draft' }
+        : { running: 'Preparing the pending change', needs_input: 'One condition still needs confirmation', conflict: 'The change conflicts with an existing condition', interrupted: 'The last change was interrupted', error: 'This change did not finish' };
       feedback.hidden = false;
       feedback.classList.add(request.status);
-      feedback.innerHTML = `<strong>${labels[request.status]}</strong><p>${display(request.question || request.detail || '已确认内容保持不变。')}</p>${request.question && request.detail ? `<p>${display(request.detail)}</p>` : ''}<p class="form-note">${generationUnavailable && request.status !== 'running' ? `真实服务当前不可用，当前无法重试；可查看已保存记录${pending ? '，并审查下方已有待审稿' : ''}。` : feedbackRequest ? request.status === 'running' ? '下方原待审稿仍保留，暂时不能接受或拒绝。确认版保持不变；成功后再审查新稿。' : '下方原待审稿仍保留，确认版未改变。可在该稿的反馈框补充或调整后重试。' : request.status === 'running' ? '等待工具返回。已确认内容保持不变。' : request.status === 'needs_input' ? '在上方修改框补充答案，再继续。' : '检查条件与行动记录后，可重新提出修改；没有自动写入确认版。'}</p>`;
+      feedback.innerHTML = `<strong>${labels[request.status]}</strong><p>${display(request.question || request.detail || 'Confirmed content stays unchanged.')}</p>${request.question && request.detail ? `<p>${display(request.detail)}</p>` : ''}<p class="form-note">${generationUnavailable && request.status !== 'running' ? `Live research is unavailable, so this cannot be retried now. Saved records can still be read${pending ? ', and you can review the pending draft below' : ''}.` : feedbackRequest ? request.status === 'running' ? 'The original pending draft stays. You cannot accept or reject it yet. The confirmed version is unchanged. Review the new draft after it succeeds.' : 'The original pending draft stays and the confirmed version is unchanged. You can adjust the feedback on that draft and try again.' : request.status === 'running' ? 'Waiting for the tool. Confirmed content stays unchanged.' : request.status === 'needs_input' ? 'Add the answer in the revision box above, then continue.' : 'Check the conditions and activity, then propose the change again. Nothing was written into the confirmed version automatically.'}</p>`;
     } else if (!pending && revisions.length) {
       const latest = revisions.at(-1);
       if (['accepted', 'rejected'].includes(latest.status)) {
         feedback.hidden = false;
         feedback.innerHTML = latest.status === 'accepted'
-          ? `<strong>修改已明确接受</strong><p>已确认内容更新至 v${esc(latest.confirmedVersion ?? project.version)}；上方概念卡显示当前正式内容。</p>`
-          : `<strong>修改已拒绝</strong><p>已确认版本保持 v${esc(project.version)}，概念内容未应用这次待审修改。</p>`;
+          ? `<strong>Change accepted</strong><p>Confirmed content is now v${esc(latest.confirmedVersion ?? project.version)}. The concept card above shows the current confirmed content.</p>`
+          : `<strong>Change rejected</strong><p>The confirmed version stays at v${esc(project.version)}. This pending change was not applied to the concept.</p>`;
       }
     }
 
@@ -431,68 +431,68 @@
     if (!pending) state.pendingFeedback = null;
 
     setHTML($('pending-review'), pending ? `<section class="pending-card" aria-labelledby="pending-heading">
-      <div class="pending-header"><div><p class="eyebrow">${conceptLetter(project, pending.targetConceptId)} · 基于确认版 v${esc(pending.baseVersion)}</p><h4 id="pending-heading">待审修改 · 第 ${esc(pendingNumber)} 稿</h4></div><span class="evidence-badge">尚未写入确认版</span></div>
-      ${pending.synthetic || project.mode === 'offline' ? '<p class="fixture-disclaimer">演示模式：这是预设修改稿，用来展示审查流程，不代表模型读懂了你的文字。</p>' : ''}
+      <div class="pending-header"><div><p class="eyebrow">${conceptLetter(project, pending.targetConceptId)} · based on confirmed v${esc(pending.baseVersion)}</p><h4 id="pending-heading">Pending change · draft ${esc(pendingNumber)}</h4></div><span class="evidence-badge">Not written into the confirmed version</span></div>
+      ${pending.synthetic || project.mode === 'offline' ? '<p class="fixture-disclaimer">Demo mode: this is a preset revision. It shows the review flow. It does not mean a model understood your words.</p>' : ''}
       <p class="pending-summary">${display(pending.summary)}</p>
-      <div class="change-summary"><span>本稿涉及</span>${list(pending.changes).map((change) => `<span class="change-field${locked.includes(change.field) ? ' locked' : ''}">${locked.includes(change.field) ? '已锁定 · ' : ''}${esc(revisionFields[change.field] || change.field)}</span>`).join('')}<strong>确认版 v${esc(project.version)} 保持不变</strong></div>
-      ${lockedChanges.length ? `<p class="revision-feedback conflict">本稿改动了已锁定的${lockedChanges.map((change) => esc(revisionFields[change.field] || change.field)).join('、')}。若要接受，需先在上方明确解锁；也可以拒绝，保留确认版。</p>` : ''}
-      <div class="review-actions"><button type="button" class="accept-revision" data-revision-decision="accept" data-revision-id="${esc(pending.id)}">接受第 ${esc(pendingNumber)} 稿，更新确认版</button><button type="button" class="reject-revision" data-revision-decision="reject" data-revision-id="${esc(pending.id)}">拒绝，保留确认版</button></div>
-      <p class="pending-request"><span>你的修改要求</span>${display(pending.request)}</p>
-      <details class="review-comparison" data-key="review-comparison-${esc(pending.id)}"><summary><strong>查看修改前后对照与影响</strong><span>${list(pending.changes).length} 项修改 · ${list(pending.impact).length} 项影响 · ${list(pending.unknowns).length} 项未知</span></summary><div class="comparison-body">
-      ${parent ? `<div class="draft-lineage"><strong>本次反馈修订 · 第 ${esc(parent.revisionNumber || 1)} 稿 → 第 ${esc(pendingNumber)} 稿</strong><p>你的反馈：${display(feedbackRecords.find((record) => record.id === pending.feedbackId)?.text || pending.request)}</p><p>上份待审稿已被替代，保留在修改记录中。</p></div><h5 class="diff-group-title">本次反馈改了什么 · 旧待审稿 → 新待审稿</h5>${revisionDiffMarkup(project, pending.draftDelta, `${pending.id}-draft`, `修订前 · 第 ${parent.revisionNumber || 1} 稿待审稿`, `修订后 · 第 ${pendingNumber} 稿待审稿`)}<details class="consolidated-diff" data-key="consolidated-${esc(pending.id)}"><summary>接受时将写入哪些修改 · 确认版 v${esc(project.version)} → 第 ${esc(pendingNumber)} 稿（${list(pending.changes).length} 项）</summary><p class="form-note">接受会一次应用以下全部差异，包含此前待审稿中保留的修改。</p>${revisionDiffMarkup(project, pending.changes, `${pending.id}-confirmed`, `修改前 · 已确认 v${project.version}`, `接受后 · 第 ${pendingNumber} 稿内容`)}</details>` : `<h5 class="diff-group-title">接受时将写入的修改 · 确认版 → 待审稿</h5>${revisionDiffMarkup(project, pending.changes, pending.id, `修改前 · 已确认 v${project.version}`, '修改后 · 待接受')}`}
+      <div class="change-summary"><span>This draft changes</span>${list(pending.changes).map((change) => `<span class="change-field${locked.includes(change.field) ? ' locked' : ''}">${locked.includes(change.field) ? 'Locked · ' : ''}${esc(revisionFields[change.field] || change.field)}</span>`).join('')}<strong>Confirmed v${esc(project.version)} stays unchanged</strong></div>
+      ${lockedChanges.length ? `<p class="revision-feedback conflict">This draft changes locked fields: ${lockedChanges.map((change) => esc(revisionFields[change.field] || change.field)).join('、')}. Unlock them above before accepting, or reject the draft and keep the confirmed version.</p>` : ''}
+      <div class="review-actions"><button type="button" class="accept-revision" data-revision-decision="accept" data-revision-id="${esc(pending.id)}">Accept draft ${esc(pendingNumber)} and update the confirmed version</button><button type="button" class="reject-revision" data-revision-decision="reject" data-revision-id="${esc(pending.id)}">Reject and keep the confirmed version</button></div>
+      <p class="pending-request"><span>Your requested change</span>${display(pending.request)}</p>
+      <details class="review-comparison" data-key="review-comparison-${esc(pending.id)}"><summary><strong>Compare before and after</strong><span>${list(pending.changes).length} changes · ${list(pending.impact).length} effects · ${list(pending.unknowns).length} unknowns</span></summary><div class="comparison-body">
+      ${parent ? `<div class="draft-lineage"><strong>This feedback revises draft ${esc(parent.revisionNumber || 1)} into draft ${esc(pendingNumber)}</strong><p>Your feedback: ${display(feedbackRecords.find((record) => record.id === pending.feedbackId)?.text || pending.request)}</p><p>The previous draft was replaced and kept in the history.</p></div><h5 class="diff-group-title">What this feedback changed · previous draft to new draft</h5>${revisionDiffMarkup(project, pending.draftDelta, `${pending.id}-draft`, `Before · draft ${parent.revisionNumber || 1}`, `After · draft ${pendingNumber}`)}<details class="consolidated-diff" data-key="consolidated-${esc(pending.id)}"><summary>What acceptance will write · confirmed v${esc(project.version)} to draft ${esc(pendingNumber)} (${list(pending.changes).length} changes)</summary><p class="form-note">Accepting applies every difference below, including changes kept from the earlier draft.</p>${revisionDiffMarkup(project, pending.changes, `${pending.id}-confirmed`, `Before · confirmed v${project.version}`, `After acceptance · draft ${pendingNumber}`)}</details>` : `<h5 class="diff-group-title">What acceptance will write · confirmed version to pending draft</h5>${revisionDiffMarkup(project, pending.changes, pending.id, `Before · confirmed v${project.version}`, 'After · pending acceptance')}`}
       ${revisionBoundariesMarkup(pending)}
-      <p class="review-boundary">格式与引用已校验；可行性、预算、版权与效果仍需另行确认。</p>
+      <p class="review-boundary">Format and citations were checked. Feasibility, budget, rights, and effects still need a separate check.</p>
       </div></details>
-      ${pending.baseVersion !== project.version || pending.targetConceptId !== project.selectedConceptId ? '<p class="revision-feedback conflict">当前确认版或已选概念已变化。先重新读取并核对；这份待审修改不能直接接受。</p>' : ''}
+      ${pending.baseVersion !== project.version || pending.targetConceptId !== project.selectedConceptId ? '<p class="revision-feedback conflict">The confirmed version or the selected concept has changed. Read it again before accepting. This pending change cannot be accepted directly.</p>' : ''}
       <form class="pending-feedback-form" id="pending-feedback-form" data-revision-id="${esc(pending.id)}">
-        <label class="field-label" for="pending-feedback-text">还没达到预期？继续反馈这份待审稿</label>
-        <textarea id="pending-feedback-text" rows="3" aria-describedby="pending-feedback-note pending-feedback-error" placeholder="描述这份待审稿中需要调整的内容、原因或希望保留的部分。">${esc(state.pendingFeedback.text)}</textarea>
-        <p class="form-note" id="pending-feedback-note">反馈会交给模型修订当前第 ${esc(pendingNumber)} 稿。确认版与原待审稿会保留，待新稿生成后由你再次审查。</p>
+        <label class="field-label" for="pending-feedback-text">Not there yet? Send more feedback on this draft</label>
+        <textarea id="pending-feedback-text" rows="3" aria-describedby="pending-feedback-note pending-feedback-error" placeholder="Say what in this draft should change, why, or what should stay.">${esc(state.pendingFeedback.text)}</textarea>
+        <p class="form-note" id="pending-feedback-note">Feedback goes to the model to revise draft ${esc(pendingNumber)}. The confirmed version and the original draft stay until you review the new draft.</p>
         <p class="pending-feedback-error" id="pending-feedback-error" role="alert"${state.pendingFeedback.error ? '' : ' hidden'}>${esc(state.pendingFeedback.error)}</p>
-        <button class="primary-button" id="submit-pending-feedback" type="submit"><span>提交反馈并修订待审稿</span><span aria-hidden="true">↗</span></button>
+        <button class="primary-button" id="submit-pending-feedback" type="submit"><span>Send feedback and revise the draft</span><span aria-hidden="true">↗</span></button>
       </form>
     </section>` : '');
 
     $('revision-history').hidden = revisions.length === 0;
     $('revision-count').textContent = String(revisions.length);
-    setHTML($('revision-records'), [...revisions].reverse().map((revision) => `<article class="revision-record"><p><strong>${esc({ pending: '待审', accepted: '已接受', rejected: '已拒绝', superseded: '已被后续稿替代' }[revision.status] || revision.status)}</strong> · 第 ${esc(revision.revisionNumber || 1)} 稿 · ${conceptLetter(project, revision.targetConceptId)} · 基于 v${esc(revision.baseVersion)}${revision.confirmedVersion ? ` → v${esc(revision.confirmedVersion)}` : ''}</p><p>${display(revision.summary)}</p>${revision.parentRevisionId ? '<p>由上份待审稿按反馈修订，未自动批准。</p>' : ''}<details class="evidence-detail" data-key="history-${esc(revision.id)}"><summary>查看当时的修改与依据</summary><p class="form-note">以下为当时记录；接受修改不代表影响已实测或未知已解决。</p>${revisionBoundariesMarkup(revision)}${revisionDiffMarkup(project, revision.changes, `history-${revision.id}`, `当时确认版 v${revision.baseVersion}`, `当时待审第 ${revision.revisionNumber || 1} 稿`)}</details></article>`).join('') + (feedbackRecords.length ? `<h5 class="feedback-history-title">待审稿反馈记录</h5>${[...feedbackRecords].reverse().map((record) => `<article class="revision-record"><p><strong>${esc({ running: '正在修订', completed: '已生成新待审稿', error: '反馈处理失败', needs_input: '需要补充条件', conflict: '存在冲突', interrupted: '处理已中断' }[record.status] || record.status)}</strong> · 针对第 ${esc(record.sourceRevisionNumber || revisions.find((revision) => revision.id === record.sourceRevisionId)?.revisionNumber || 1)} 稿</p><p>你的反馈：${display(record.text)}</p>${record.detail || record.question ? `<p>${display(record.question || record.detail)}</p>` : ''}</article>`).join('')}` : ''));
+    setHTML($('revision-records'), [...revisions].reverse().map((revision) => `<article class="revision-record"><p><strong>${esc({ pending: 'Pending', accepted: 'Accepted', rejected: 'Rejected', superseded: 'Replaced by a later draft' }[revision.status] || revision.status)}</strong> · draft ${esc(revision.revisionNumber || 1)} · ${conceptLetter(project, revision.targetConceptId)} · based on v${esc(revision.baseVersion)}${revision.confirmedVersion ? ` → v${esc(revision.confirmedVersion)}` : ''}</p><p>${display(revision.summary)}</p>${revision.parentRevisionId ? '<p>Revised from the previous draft using feedback. It was not approved automatically.</p>' : ''}<details class="evidence-detail" data-key="history-${esc(revision.id)}"><summary>See the change and its basis at the time</summary><p class="form-note">This is the record from that time. Accepting a change does not mean its effects were tried or that unknowns were resolved.</p>${revisionBoundariesMarkup(revision)}${revisionDiffMarkup(project, revision.changes, `history-${revision.id}`, `Confirmed then, v${revision.baseVersion}`, `Pending draft ${revision.revisionNumber || 1}`)}</details></article>`).join('') + (feedbackRecords.length ? `<h5 class="feedback-history-title">Feedback on pending drafts</h5>${[...feedbackRecords].reverse().map((record) => `<article class="revision-record"><p><strong>${esc({ running: 'Revising', completed: 'A new draft was created', error: 'Feedback failed', needs_input: 'A condition is needed', conflict: 'There is a conflict', interrupted: 'Interrupted' }[record.status] || record.status)}</strong> · on draft ${esc(record.sourceRevisionNumber || revisions.find((revision) => revision.id === record.sourceRevisionId)?.revisionNumber || 1)}</p><p>Your feedback: ${display(record.text)}</p>${record.detail || record.question ? `<p>${display(record.question || record.detail)}</p>` : ''}</article>`).join('')}` : ''));
   }
 
   // Exports confirmed content, pending drafts and evidence summaries; raw provider responses stay out.
   function proposalMarkdown(project) {
-    const line = (value) => (value === null || value === undefined || value === '' ? '未知'
+    const line = (value) => (value === null || value === undefined || value === '' ? 'Unknown'
       : typeof value === 'object' ? JSON.stringify(value) : String(value)).replace(/\s+/g, ' ').trim();
-    const items = (values, empty = '无') => list(values).length ? list(values).map((value) => `- ${line(value)}`).join('\n') : `- ${empty}`;
-    const joined = (values, empty = '未知') => list(values).map(line).join('；') || empty;
+    const items = (values, empty = 'None') => list(values).length ? list(values).map((value) => `- ${line(value)}`).join('\n') : `- ${empty}`;
+    const joined = (values, empty = 'Unknown') => list(values).map(line).join('；') || empty;
     const entity = (item) => `${line(item.name)}（${line(item.id ?? item.entity_id ?? item.entityId)}${item.type ? ` · ${line(item.type)}` : ''}）`;
     const brief = project.brief || {};
     const locked = list(project.lockedFields);
     const pending = pendingRevision(project);
-    const status = { pending: '待审', accepted: '已接受', rejected: '已拒绝', superseded: '已被后续稿替代' };
+    const status = { pending: 'Pending', accepted: 'Accepted', rejected: 'Rejected', superseded: 'Replaced by a later draft' };
     const sections = [
-      `# ${line(brief.brand || '品牌快闪')} · 早期体验提案包`,
-      `- 项目：${line(project.id)}\n- 已确认版本：v${line(project.version)}\n- 运行方式：${project.mode === 'offline' ? '离线模拟与合成夹具，不代表真实模型或 Qloo 结果' : '真实模型与 Qloo'}\n- 导出时间：${new Date().toISOString()}\n- 性质：早期体验提案，不是施工方案；不保证预算、场地安全、版权或活动效果。`,
-      `## 需求与限制（客户提供，未经独立核实）\n- 原始需求：${line(brief.request)}\n- 品牌 / 产品：${line(brief.brand)}\n- 活动目标：${line(brief.goal)}\n- 文化参考（待研究信号，不是受众画像）：${joined(brief.references)}\n- 城市 / 场地：${line(brief.venue)}\n- 预算：${line(brief.budget)}\n- 必须保留：${joined(brief.mustKeep, '无')}\n- 禁止 / 避免：${joined(brief.avoid, '无')}`,
+      `# ${line(brief.brand || 'Brand pop-up')} · early experience proposal`,
+      `- Project: ${line(project.id)}\n- Confirmed version: v${line(project.version)}\n- Mode: ${project.mode === 'offline' ? 'Offline simulation with synthetic fixtures. Not a live model or Qloo result.' : 'Live model and Qloo'}\n- Exported: ${new Date().toISOString()}\n- Nature: an early experience proposal, not a build plan. It does not guarantee budget, venue safety, rights, or results.`,
+      `## Brief and limits (client-provided, not independently verified)\n- Original request: ${line(brief.request)}\n- Brand / product: ${line(brief.brand)}\n- Activity goal: ${line(brief.goal)}\n- Cultural references (signals to research, not an audience profile): ${joined(brief.references)}\n- City / venue: ${line(brief.venue)}\n- Budget: ${line(brief.budget)}\n- Must keep: ${joined(brief.mustKeep, 'None')}\n- Do not / avoid: ${joined(brief.avoid, 'None')}`,
     ];
-    if (list(project.clarifications).length) sections.push(`## 澄清记录\n${project.clarifications.map((record) => `- 问：${line(record.question)}\n  答：${line(record.answer)}`).join('\n')}`);
-    sections.push(`## 开放问题\n${items(list(project.questions).map((question) => typeof question === 'string' ? question : question.text))}`);
+    if (list(project.clarifications).length) sections.push(`## Clarifications\n${project.clarifications.map((record) => `- Question: ${line(record.question)}\n  Answer: ${line(record.answer)}`).join('\n')}`);
+    sections.push(`## Open questions\n${items(list(project.questions).map((question) => typeof question === 'string' ? question : question.text))}`);
     list(project.concepts).forEach((concept, index) => {
       const selected = concept.id === project.selectedConceptId;
-      sections.push([`## 概念 ${String.fromCharCode(65 + index)} · ${line(concept.title)}${selected ? '（已选）' : ''}`,
-        selected && locked.length ? `锁定字段：${locked.map((field) => revisionFields[field] || field).join('、')}` : '',
-        `**核心主张**：${line(concept.coreClaim)}`,
-        `**参与机制**（${line(concept.mechanism?.organization)}）：${line(concept.mechanism?.description)}`,
-        `**体验旅程**\n${list(concept.journey).map((step) => `- ${line(step.stage)}：${line(step.action)}`).join('\n') || '- 未知'}`,
-        `**产品接触点**\n${items(concept.productTouchpoints)}`,
-        `**文化依据与设计推断**\n${list(concept.evidenceLinks).map((link) => `- 数据事实：${line(link.observation)}（证据 ${line(link.evidenceId)} · 实体 ${line(link.entityId)} · 字段 ${line(link.observedField)}）\n  设计推断：${line(link.inspiration)}`).join('\n') || '- 证据不足'}`,
-        `**开放问题 / 风险**\n${items(concept.openQuestions)}`,
-        `**未验证效果**\n${items(concept.unverifiedEffects)}`].filter(Boolean).join('\n\n'));
+      sections.push([`## Concept ${String.fromCharCode(65 + index)} · ${line(concept.title)}${selected ? ' (selected)' : ''}`,
+        selected && locked.length ? `Locked fields: ${locked.map((field) => revisionFields[field] || field).join('、')}` : '',
+        `**Core claim**: ${line(concept.coreClaim)}`,
+        `**Participation** (${line(concept.mechanism?.organization)}): ${line(concept.mechanism?.description)}`,
+        `**Journey**\n${list(concept.journey).map((step) => `- ${line(step.stage)}: ${line(step.action)}`).join('\n') || '- Unknown'}`,
+        `**Product contact**\n${items(concept.productTouchpoints)}`,
+        `**Cultural basis and design inference**\n${list(concept.evidenceLinks).map((link) => `- Data fact: ${line(link.observation)} (evidence ${line(link.evidenceId)} · entity ${line(link.entityId)} · field ${line(link.observedField)})\n  Design inference: ${line(link.inspiration)}`).join('\n') || '- Not enough evidence'}`,
+        `**Open questions / risks**\n${items(concept.openQuestions)}`,
+        `**Unverified effects**\n${items(concept.unverifiedEffects)}`].filter(Boolean).join('\n\n'));
     });
-    if (pending) sections.push(`## 待审修改（尚未写入确认版）\n- 第 ${line(pending.revisionNumber || 1)} 稿 · ${conceptLetter(project, pending.targetConceptId)} · 基于 v${line(pending.baseVersion)}\n- 修改要求：${line(pending.request)}\n- 说明：${line(pending.summary)}\n- 涉及字段：${list(pending.changes).map((change) => revisionFields[change.field] || change.field).join('、')}\n- 仍然未知：\n${list(pending.unknowns).map((item) => `  - ${line(item)}`).join('\n') || '  - 未记录'}`);
-    sections.push(`## 版本记录\n${[...list(project.versionHistory).map((record) => `- v${line(record.version)} 确认于 ${line(record.confirmedAt)}${record.revisionId ? '，由已接受修改生成' : ''}`),
-      ...list(project.revisions).map((revision) => `- 第 ${line(revision.revisionNumber || 1)} 稿：${status[revision.status] || line(revision.status)}${revision.confirmedVersion ? ` → v${revision.confirmedVersion}` : ''} · ${line(revision.summary)}`)].join('\n') || '- 无'}`);
-    sections.push(`## 文化证据\n${list(project.evidence).map((item, index) => `### 证据 ${index + 1}${item.synthetic ? '（合成夹具，非真实证据）' : ''}\n- 证据标识：${line(item.id)}\n- 查询问题：${line(item.query?.designQuestion)}\n- 实际输入实体：${list(item.inputReferences).map(entity).join('；') || '未知'}\n- 返回实体：${list(item.returnedEntities).map(entity).join('；') || '未知'}\n- 来源：${line(item.source)}\n- 安全请求引用：${line(item.requestRef)}\n- 查询时间：${line(item.queriedAt)}\n- 适用边界：${line(item.boundary)}`).join('\n\n') || '尚无证据'}`);
-    sections.push('## 使用边界\n- 文化亲和关联只表示本次请求中的文化关联，不是审美评分、方案质量或效果预测。\n- 本文件不包含 Qloo 原始响应。');
+    if (pending) sections.push(`## Pending change (not written into the confirmed version)\n- Draft ${line(pending.revisionNumber || 1)} · ${conceptLetter(project, pending.targetConceptId)} · based on v${line(pending.baseVersion)}\n- Requested change: ${line(pending.request)}\n- Summary: ${line(pending.summary)}\n- Fields: ${list(pending.changes).map((change) => revisionFields[change.field] || change.field).join(', ')}\n- Still unknown:\n${list(pending.unknowns).map((item) => `  - ${line(item)}`).join('\n') || '  - Not recorded'}`);
+    sections.push(`## Version history\n${[...list(project.versionHistory).map((record) => `- v${line(record.version)} confirmed at ${line(record.confirmedAt)}${record.revisionId ? ', created from an accepted change' : ''}`),
+      ...list(project.revisions).map((revision) => `- Draft ${line(revision.revisionNumber || 1)}: ${status[revision.status] || line(revision.status)}${revision.confirmedVersion ? ` → v${revision.confirmedVersion}` : ''} · ${line(revision.summary)}`)].join('\n') || '- None'}`);
+    sections.push(`## Cultural evidence\n${list(project.evidence).map((item, index) => `### Evidence ${index + 1}${item.synthetic ? ' (synthetic fixture, not live evidence)' : ''}\n- Evidence id: ${line(item.id)}\n- Query question: ${line(item.query?.designQuestion)}\n- Input entities: ${list(item.inputReferences).map(entity).join('；') || 'Unknown'}\n- Returned entities: ${list(item.returnedEntities).map(entity).join('；') || 'Unknown'}\n- Source: ${line(item.source)}\n- Safe request reference: ${line(item.requestRef)}\n- Queried: ${line(item.queriedAt)}\n- Boundary: ${line(item.boundary)}`).join('\n\n') || 'No evidence yet'}`);
+    sections.push('## Limits of use\n- Cultural affinity is only the association in this request. It is not an aesthetic score, a quality score, or an effect prediction.\n- This file does not include the raw Qloo response.');
     return `${sections.join('\n\n')}\n`;
   }
 
@@ -508,18 +508,18 @@
     const hasConcepts = list(project.concepts).length > 0;
     const generationUnavailable = project.mode === 'live' && !state.config?.modes?.live?.available;
     const accepted = !pending && phase === 'ready' && list(project.revisions).at(-1)?.status === 'accepted';
-    const next = pending ? ['#pending-review', '审阅待审修改'] : project.selectedConceptId
-      ? generationUnavailable ? ['#concepts', '查看已确认方案'] : ['#revision-workspace', '继续修改已选方向'] : hasConcepts ? ['#concepts', '比较并选择方向']
-        : phase === 'needs_input' && !generationUnavailable ? ['#questions-panel', '补充关键条件'] : ['#evidence', '检查研究依据'];
-    const guidance = pending ? '先看修改差异，再决定是否更新确认版。'
-      : phase === 'ready' ? project.selectedConceptId ? generationUnavailable ? '已确认内容与选定方向已保留。真实服务当前不可用，可先查看方案、依据与修改记录。' : '选定方向已保留。下一处修改会先进入待审。' : '比较参与组织、产品触点与依据，选一个方向继续。'
-        : phase === 'busy' ? '正在处理当前需求，已确认内容保持不变。' : project.status?.detail;
+    const next = pending ? ['#pending-review', 'Review the pending change'] : project.selectedConceptId
+      ? generationUnavailable ? ['#concepts', 'View the confirmed proposal'] : ['#revision-workspace', 'Keep revising the selected direction'] : hasConcepts ? ['#concepts', 'Compare and choose a direction']
+        : phase === 'needs_input' && !generationUnavailable ? ['#questions-panel', 'Add the missing condition'] : ['#evidence', 'Check the research basis'];
+    const guidance = pending ? 'Read the difference, then decide whether to update the confirmed version.'
+      : phase === 'ready' ? project.selectedConceptId ? generationUnavailable ? 'The confirmed content and selected direction were kept. Live service is unavailable. You can still read the proposal, evidence, and revision history.' : 'The selected direction was kept. The next change will be pending first.' : 'Compare participation, product contact, and evidence, then choose a direction.'
+        : phase === 'busy' ? 'The current request is being handled. Confirmed content stays unchanged.' : project.status?.detail;
     $('project-status').className = `project-status ${Object.keys(phaseLabels).includes(phase) ? phase : ''}`;
-    setHTML($('project-status'), `<div class="status-overview"><span class="phase-mark" aria-hidden="true"></span><div class="status-copy"><strong>${esc(accepted ? `修改已接受 · 已确认 v${project.version}` : phaseLabels[phase] || '项目状态待确认')}</strong><p>${display(guidance)}</p></div>${phase !== 'busy' ? `<a class="next-action" href="${next[0]}">${next[1]}<span aria-hidden="true">↗</span></a>` : '<span class="busy-caption">请稍候</span>'}</div>${project.provenance?.kind === 'historical_copy' ? '<p class="provenance-note">当前复用历史真实证据和概念，本轮未重新查询。</p>' : ''}${phase === 'busy' ? '<span class="busy-bar" aria-hidden="true"></span>' : ''}`);
-    $('version-stamp').textContent = `v${project.version ?? '?'} 已确认`;
+    setHTML($('project-status'), `<div class="status-overview"><span class="phase-mark" aria-hidden="true"></span><div class="status-copy"><strong>${esc(accepted ? `Change accepted · confirmed v${project.version}` : phaseLabels[phase] || 'Project status is not confirmed yet')}</strong><p>${display(guidance)}</p></div>${phase !== 'busy' ? `<a class="next-action" href="${next[0]}">${next[1]}<span aria-hidden="true">↗</span></a>` : '<span class="busy-caption">Please wait</span>'}</div>${project.provenance?.kind === 'historical_copy' ? '<p class="provenance-note">This reuses earlier live evidence and concepts. Nothing was queried again this round.</p>' : ''}${phase === 'busy' ? '<span class="busy-bar" aria-hidden="true"></span>' : ''}`);
+    $('version-stamp').textContent = `v${project.version ?? '?'} confirmed`;
     if (versionChanged && !window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) $('version-stamp').animate?.([{ transform: 'scale(1)' }, { transform: 'scale(1.14)', offset: 0.35 }, { transform: 'scale(1)' }], { duration: 520, easing: 'cubic-bezier(.23,1,.32,1)' });
-    $('board-heading').textContent = project.brief?.brand || '当前项目提案';
-    $('board-subtitle').textContent = project.brief?.goal || '比较设计方向，让每一步修改都可审查。';
+    $('board-heading').textContent = project.brief?.brand || 'Current project proposal';
+    $('board-subtitle').textContent = project.brief?.goal || 'Compare design directions so every change can be reviewed.';
     renderContext(project);
     renderMessages(project);
     renderActions(project);
@@ -541,7 +541,7 @@
       if (result.project.status?.phase === 'busy' || result.project.revisionRequest?.status === 'running') window.setTimeout(() => readProject(id, token), 850);
     } catch (error) {
       if (token !== state.pollToken) return;
-      showError(`项目读取中断：${error.message}`, () => readProject(id, token));
+      showError(`Reading the project was interrupted: ${error.message}`, () => readProject(id, token));
     }
   }
 
@@ -563,7 +563,7 @@
       startPolling(result.project);
     } catch (error) {
       if (onFailure) onFailure(error);
-      showError(`${failureLabel}：${error.message}${error.status === 409 ? ' 请核对最新项目状态后重试。' : ''}`, () => readProject(projectId, ++state.pollToken));
+      showError(`${failureLabel}：${error.message}${error.status === 409 ? ' Check the latest project state and try again.' : ''}`, () => readProject(projectId, ++state.pollToken));
       if (error.status === 409) {
         try {
           const result = await api(`/api/projects/${encodeURIComponent(projectId)}`);
@@ -590,7 +590,7 @@
     if (!button || !record || button.disabled) return;
     projectAction('/messages', { referenceResolution: { resolutionId: record.id, baseVersion: state.project.version,
       action: button.hasAttribute('data-reference-cancel') ? 'cancel' : 'confirm',
-      ...(button.dataset.referenceChoice ? { selectedId: button.dataset.referenceChoice } : {}) } }, '实体选择未被接收');
+      ...(button.dataset.referenceChoice ? { selectedId: button.dataset.referenceChoice } : {}) } }, 'The entity choice was not received');
   });
   $('questions-panel').addEventListener('submit', event => {
     if (event.target.id !== 'reference-details-form') return;
@@ -599,17 +599,17 @@
     const text = $('reference-details').value.trim();
     if (!record || !text) return;
     projectAction('/messages', { referenceResolution: { resolutionId: record.id, baseVersion: state.project.version,
-      action: 'clarify', text } }, '补充信息未被接收');
+      action: 'clarify', text } }, 'The added detail was not received');
   });
   $('questions-panel').addEventListener('change', event => {
     if (event.target.id !== 'clarification-update-field') return;
     const field = event.target.value, value = state.project.brief[field];
     $('clarification-value').hidden = $('clarification-value-label').hidden = field === 'request';
     $('clarification-value').value = Array.isArray(value) ? value.join('\n') : value;
-    $('clarification-value-label').textContent = `修改后的${event.target.selectedOptions[0].textContent}${Array.isArray(value) ? '（每行一项；清空表示明确取消这些条目）' : ''}`;
+    $('clarification-value-label').textContent = `Updated ${event.target.selectedOptions[0].textContent}${Array.isArray(value) ? ' (one item per line; empty means these items are explicitly removed)' : ''}`;
   });
   $('load-ambiguous').addEventListener('click', () => {
-    fillBrief({ ...demo, request: '合成验收任务：为虚构运动鞋品牌「未定式」设计快闪。希望保留试穿，用音乐和电影作为研究线索。城市与场地还没想好，请先确认会影响方案的条件。', venue: '', budget: '' });
+    fillBrief({ ...demo, request: 'Synthetic demo: design a pop-up for the fictional sneaker brand Weiding. Keep the try-on, and use music and film as research signals. The city and venue are not decided. Confirm the condition that would change the proposal.', venue: '', budget: '' });
     $('mode').value = 'offline';
     modeChosen = true;
     updateMode();
@@ -618,13 +618,13 @@
   $('mode').addEventListener('change', () => { modeChosen = true; updateMode(); });
   $('offline-revision-fixture').addEventListener('change', () => {
     $('offline-revision-note').textContent = $('offline-revision-fixture').value
-      ? '演示模式不理解自由文本；预设修改稿只用来展示审查流程。'
-      : '不使用预设时，演示模式会暂停并说明原因。';
+      ? 'Demo mode does not understand free text. A preset revision only shows the review flow.'
+      : 'Without a preset, demo mode pauses and says why.';
   });
   $('concepts').addEventListener('click', (event) => {
     const button = event.target.closest('[data-select-concept]');
     if (!button || button.disabled || !state.project) return;
-    projectAction('/select', { conceptId: button.dataset.selectConcept, baseVersion: state.project.version }, '未能选择概念', () => {
+    projectAction('/select', { conceptId: button.dataset.selectConcept, baseVersion: state.project.version }, 'The concept was not selected', () => {
       window.setTimeout(() => { $('revision-workspace').scrollIntoView({ block: 'start' }); $('revision-text').focus({ preventScroll: true }); }, 0);
     });
   });
@@ -640,7 +640,7 @@
     const button = event.target.closest('[data-lock-field]');
     if (!button || button.disabled || !state.project) return;
     projectAction('/locks', { baseVersion: state.project.version, field: button.dataset.lockField,
-      locked: button.getAttribute('aria-pressed') !== 'true' }, '锁定状态未更新');
+      locked: button.getAttribute('aria-pressed') !== 'true' }, 'The lock was not updated');
   });
   $('revision-form').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -649,7 +649,7 @@
       $('revision-text').setAttribute('aria-invalid', 'true');
       $('revision-feedback').hidden = false;
       $('revision-feedback').className = 'revision-feedback needs_input';
-      $('revision-feedback').textContent = '请先填写希望修改的内容。';
+      $('revision-feedback').textContent = 'Write what you want changed first.';
       $('revision-text').focus();
       return;
     }
@@ -657,7 +657,7 @@
     if (!state.project?.selectedConceptId || pendingRevision(state.project)) return;
     const payload = { text, conceptId: state.project.selectedConceptId, baseVersion: state.project.version };
     if (state.project.mode === 'offline' && $('offline-revision-fixture').value) payload.offlineFixture = $('offline-revision-fixture').value;
-    projectAction('/revisions', payload, '修改要求未被确认接收', () => { $('revision-text').value = ''; });
+    projectAction('/revisions', payload, 'The change request was not confirmed', () => { $('revision-text').value = ''; });
   });
   $('revision-text').addEventListener('input', () => {
     if ($('revision-text').getAttribute('aria-invalid') !== 'true') return;
@@ -667,7 +667,7 @@
   $('pending-review').addEventListener('click', (event) => {
     const button = event.target.closest('[data-revision-decision]');
     if (!button || button.disabled || !state.project) return;
-    projectAction(`/revisions/${encodeURIComponent(button.dataset.revisionId)}/${button.dataset.revisionDecision}`, { baseVersion: state.project.version }, '审查决定未完成');
+    projectAction(`/revisions/${encodeURIComponent(button.dataset.revisionId)}/${button.dataset.revisionDecision}`, { baseVersion: state.project.version }, 'The review decision did not finish');
   });
   $('pending-review').addEventListener('input', (event) => {
     if (event.target.id !== 'pending-feedback-text' || !state.pendingFeedback) return;
@@ -684,7 +684,7 @@
     const text = $('pending-feedback-text').value;
     if (!text.trim()) {
       $('pending-feedback-text').setAttribute('aria-invalid', 'true');
-      $('pending-feedback-error').textContent = '请先写下对这份待审稿的反馈。';
+      $('pending-feedback-error').textContent = 'Write feedback on this draft first.';
       $('pending-feedback-error').hidden = false;
       $('pending-feedback-text').focus();
       return;
@@ -693,9 +693,9 @@
     state.pendingFeedback.error = '';
     $('pending-feedback-text').removeAttribute('aria-invalid');
     $('pending-feedback-error').hidden = true;
-    projectAction(`/revisions/${encodeURIComponent(pending.id)}/feedback`, { baseVersion: state.project.version, text }, '待审稿反馈未被确认接收', null, (error) => {
+    projectAction(`/revisions/${encodeURIComponent(pending.id)}/feedback`, { baseVersion: state.project.version, text }, 'Feedback on the pending draft was not confirmed', null, (error) => {
       if (state.pendingFeedback?.revisionId !== pending.id) return;
-      state.pendingFeedback.error = `反馈未被确认接收：${error.message}。原待审稿仍保留；请核对后重试。`;
+      state.pendingFeedback.error = `Feedback was not confirmed: ${error.message}. The original draft is still here. Check it and try again.`;
       renderRevision(state.project);
     });
   });
@@ -714,7 +714,7 @@
       renderProject(result.project);
       startPolling(result.project);
     } catch (error) {
-      showError(`项目未建立：${error.message}`);
+      showError(`The project was not created: ${error.message}`);
     } finally {
       state.pending = false;
       updateControls();
@@ -741,7 +741,7 @@
       }
     }
     if (selected && state.project.mode === 'offline' && $('offline-revision-fixture').value) payload.offlineFixture = $('offline-revision-fixture').value;
-    projectAction(selected ? '/revisions' : '/messages', payload, '回复未发送', () => { $('message').value = ''; });
+    projectAction(selected ? '/revisions' : '/messages', payload, 'The reply was not sent', () => { $('message').value = ''; });
   });
 
   updateMode();
@@ -757,6 +757,6 @@
       updateMode();
       renderProject(project);
       startPolling(project);
-    }).catch((error) => showError(`无法恢复项目：${error.message} 没有用空白项目覆盖保存记录。`, () => readProject(existingId, token)));
+    }).catch((error) => showError(`The project could not be restored: ${error.message} The saved record was not replaced with an empty project.`, () => readProject(existingId, token)));
   }
 })();

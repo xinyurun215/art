@@ -142,7 +142,7 @@ test('mocked official session reads local Qloo budget exhaustion and never attri
   assert.equal(result.modelRequests, 2);
   assert.equal(result.modelFeedback.at(-1).code, 'QLOO_HTTP_BUDGET_EXHAUSTED');
   assert.equal(result.modelFeedback.at(-1).remainingBudget.qlooHttpAttempts, 0);
-  assert.match(result.modelFeedback.at(-1).nextAction, /禁止继续 Qloo/);
+  assert.match(result.modelFeedback.at(-1).nextAction, /Do not query Qloo/);
   assert.equal(project.runtime.failure.status, null);
   assert.equal(project.runtime.feedback.remainingBudget.modelHttpAttempts, 4, 'final state refreshes budget after the text-only closing model request');
   assert.equal(project.runtime.httpAttempts.filter(entry => entry.kind === 'qloo').length, 1);
@@ -280,7 +280,7 @@ test('mocked remote empty is a different official tool result and remains readab
   assert.equal(result.qlooRequests, 2);
   assert.equal(result.modelFeedback.at(-1).code, 'QLOO_EMPTY');
   assert.equal(result.modelFeedback.at(-1).remainingBudget.qlooHttpAttempts, 4);
-  assert.match(result.modelFeedback.at(-1).nextAction, /不要重复相同空查询/);
+  assert.match(result.modelFeedback.at(-1).nextAction, /Do not repeat the same empty query/);
   assert.equal(project.runtime.queryStopped, undefined);
   assert.equal(project.evidence[0].returnedEntities.length, 0);
   assert.equal(project.status.phase, 'insufficient_evidence');
@@ -333,7 +333,7 @@ test('sixth mocked model HTTP accepts terminal proposal or retains precise rejec
     assert.equal(project.runtime.feedback.remainingBudget.modelHttpAttempts, 0);
     assert.equal(project.runtime.feedback.code, accepted ? 'PROPOSAL_ACCEPTED' : 'EVIDENCE_INSUFFICIENT');
     assert.equal(project.runtime.feedback.path, accepted ? '/' : '/concepts/0/evidenceLinks');
-    assert.match(project.runtime.feedback.nextAction, /禁止继续模型请求/);
+    assert.match(project.runtime.feedback.nextAction, /Do not send another model request/);
     assert.equal(project.status.phase, 'insufficient_evidence');
     assert.equal(project.version, accepted ? 2 : 1, 'an evidence refusal never applies the rejected proposal');
   }

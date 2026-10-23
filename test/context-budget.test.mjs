@@ -408,7 +408,7 @@ test('proactive context respects irreducible overflow and existing stop gates', 
       assert.equal(project.runtime.failure.code, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT');
       assert(project.runtime.generationBudget.components.work > 32000);
       assert.equal(project.runtime.generationBudget.largestComponent, 'work');
-      assert(project.runtime.failure.reason.includes('当前工作状态'));
+      assert(project.runtime.failure.reason.includes('the current working state'));
       assert(project.runtime.generationBudget.overByTokens > 0);
     }
     if (condition === 'global-stop') assert.equal(validationRun.failure.code, 'SYNTHETIC_DURABLE_STOP');

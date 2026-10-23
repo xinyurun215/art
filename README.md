@@ -1,65 +1,67 @@
-# 品牌快闪体验设计 Agent（智能体）
+# Brand pop-up experience design agent
 
-面向小型创意团队中的体验设计师与创意策划，将客户需求和受众文化研究整理为有依据、可讨论、可编辑的早期品牌快闪体验提案。正式产品名待定。
+For experience designers and creative planners on small teams. It turns a client brief and cultural research into an early brand pop-up proposal that can be discussed, edited, and traced. The formal product name is not decided.
 
-当前保存的是阶段实现：官方运行时接入、产品工作台、局部修订与审查、字段锁定、Markdown 导出，以及 Vercel + Postgres 部署适配。**完整产品尚未验收通过**。默认离线演示使用模拟模型与合成夹具，不代表真实模型成功。
+What is saved now is a stage implementation: the official runtime, the workspace, partial revision and review, field locks, Markdown export, and a Vercel + Postgres deployment adapter. **The complete product has not passed acceptance.** The default offline demo uses a simulated model and synthetic fixtures. It does not mean a live model succeeded.
 
-完整定位与范围以 [PRODUCT.md](docs/PRODUCT.md) 为准，精简验证结论见 [VALIDATION.md](docs/VALIDATION.md)，部署说明见 [DEPLOYMENT.md](docs/DEPLOYMENT.md)。
+Product scope is [PRODUCT.md](docs/PRODUCT.md). A short validation record is [VALIDATION.md](docs/VALIDATION.md). Deployment notes are [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-## 在线演示
+## Online demo
 
-公开地址：[art-lovat-two.vercel.app](https://art-lovat-two.vercel.app/)，无需登录。
+Public address: [art-lovat-two.vercel.app](https://art-lovat-two.vercel.app/). No login.
 
-1. 点「完整示例」载入合成需求，保持「模拟模型与夹具」，点「开始研究」，得到两个参与机制不同的概念。
-2. 选择一个概念；可在修改区锁定字段，再提出修改。修改先成为待审稿，接受后才写入确认版本。
-3. 刷新页面会恢复正式内容与待审稿；右上角可导出 Markdown 提案包。
+1. Choose **Complete brief** to load a synthetic request, keep **Demo · synthetic data**, and choose **Start research**. Two concepts with different ways of participating appear.
+2. Select a concept. You can lock fields, then propose a change. The change becomes a pending draft. It is written into the confirmed version only after you accept it.
+3. Refreshing restores confirmed content and any pending draft. **Export proposal** downloads a Markdown proposal pack.
 
-项目按浏览器隔离：带 `?project=` 的链接只能在创建它的浏览器中打开，分享时请发首页地址。「真实模型与 Qloo」会发起真实请求，受每项目请求上限约束。
+Projects are isolated by browser. A `?project=` link opens only in the browser that created it. Share the home address. **Live research · model + Qloo** makes real requests, within the per-project request cap.
 
-## 当前验证状态
+The agent is instructed to write proposals, questions, and revisions in English.
 
-| 验证层次 | 当前结论 |
+## Current validation
+
+| Layer | Current conclusion |
 | --- | --- |
-| 离线运行与契约 | `npm test` 232 项通过；另有 19 项 Postgres 测试在隔离的本地数据库中通过。模拟模型、合成数据与人工构造提案仅用于测试，不代表真实模型成功 |
-| 公开部署 | 线上已用离线模式走通生成双概念、选择、待审修改、接受与刷新恢复；线上真实模式未在本仓库记录中验收 |
-| 真实Qloo查询 | 历史运行曾取得实际描述和关联推荐；该次最终没有概念被接受，不能称端到端成功 |
-| 真实模型提案 | 后续隔离项目复用历史证据，DeepSeek官方 `deepseek-flash` 经两次拒绝后于第3次提交双概念，通过真实执行器并在本地页面显示；该轮新增Qloo请求为0 |
-| 完整在线研究闭环与产品效果 | 尚未通过；复用证据的提案链路不等于本轮完整在线研究闭环、稳定一次成功能力或设计效果验证 |
+| Offline run and contracts | `npm test` passed 232 tests. Another 19 Postgres tests passed against an isolated local database. Simulated models, synthetic data, and hand-built proposals are for tests. They do not mean a live model succeeded |
+| Public deployment | Offline mode on the public site has produced two concepts, selection, a pending change, acceptance, and restore after refresh. A recorded live-mode acceptance is not in this repository's validation record |
+| Live Qloo query | An earlier run returned real descriptions and association recommendations. No concept was accepted in that run, so it is not an end-to-end success |
+| Live model proposal | A later isolated project reused saved evidence. Official DeepSeek `deepseek-flash` was rejected twice, then submitted two concepts on the third try, passed the real executor, and showed them on a local page. That round made 0 new Qloo requests |
+| Full online research loop and product effect | Not passed. A proposal path that reuses evidence is not a full online research loop, a claim of stable first-try success, or a test of design effect |
 
-真实响应、原始会话、运行状态、未确认可公开的Qloo材料及本机截图留在本机，不随仓库发布。公开源码中的文化数据夹具均标为合成数据。
+Real responses, raw sessions, runtime state, Qloo material that is not cleared for publication, and local screenshots stay on the machine. They are not published with the repository. Cultural fixtures in the public source are marked synthetic.
 
-## 本地使用
+## Local use
 
-需要 Node.js（运行环境）22.19 或更新版本。在仓库根目录执行：
+Node.js 22.19 or newer. From the repository root:
 
 ```powershell
 npm ci
 npm start
 ```
 
-离线演示不需要模型或 Qloo 密钥。打开启动时显示的本地地址，在页面载入明确标注的合成演示需求，开始探索、回答追问，再并排审阅两套概念。可选择查询失败与证据不相关的离线验收场景。
+The offline demo needs no model or Qloo key. Open the local address printed at startup, load a synthetic brief that is marked as a demo, answer any question, and compare the two concepts. Offline scenarios can also show a failed query or an irrelevant result.
 
-默认地址为 [本地工作区](http://127.0.0.1:3000)。当前已安装依赖时直接 `npm start` 即可。离线模型是确定性的验收替身，只展示规定场景；它不具备理解任意客户需求并生成真实研究概念的能力。
+The default address is [the local workspace](http://127.0.0.1:3000). If dependencies are already installed, `npm start` is enough. The offline model is a deterministic stand-in. It only plays prescribed scenarios. It cannot understand an arbitrary brief and produce a live research concept.
 
-页面中的文化证据、设计推断和未验证效果分别展示。合成夹具不是 Qloo 返回，亲和关联不能解释为审美分、销量或成功率。
+Cultural evidence, design inference, and unverified effects are shown separately. A synthetic fixture is not a Qloo response. Affinity is not an aesthetic score, a sales figure, or a success rate.
 
 ```powershell
 npm test
 ```
 
-测试使用合成数据和本地模拟传输，不发起真实模型或Qloo请求，不运行静态检查，也不依赖本机历史验证材料。测试可能生成本地合成验收记录，该目录由Git（版本控制）排除。设置 `ART_TEST_DATABASE_URL` 指向隔离的 Postgres 后，会额外运行数据库测试；每项测试使用独立 schema 并在结束时删除。
+Tests use synthetic data and a local simulated transport. They do not call a live model or Qloo, do not run a static check, and do not depend on private validation files on this machine. A test may write a local synthetic record. Git ignores that directory. Point `ART_TEST_DATABASE_URL` at an isolated Postgres database to run the database tests as well. Each test uses its own schema and deletes it at the end.
 
-## 运行边界
+## Runtime boundaries
 
-- 使用 `@qloo/qloo-harness@0.1.26` 官方 Node（运行环境）公开会话接口，工具执行循环由官方运行时负责。
-- 需求、约束、证据、概念、锁定和处理状态保存在服务端项目记录中，聊天记录不作为唯一数据源。本地保存为 JSON 文件；Vercel 部署保存到 Postgres，跨函数实例恢复。
-- 项目标识由服务端绑定，模型不得提交；执行器核对版本、证据归属、实际字段和值及字面约束。双概念无追问时可以省略问题列表或使用空数组。
-- 真实模式需要明确的产品提供商、模型、API（应用程序接口）协议、端点与Qloo配置，并单独授权调用预算。仅有某个密钥环境变量不代表配置齐备。
-- 本地上下文总预算：真实模式使用 `deepseek-flash`、`openai-completions` 协议及 HTTPS `api.deepseek.com` 官方来源时，默认 **65536 词元**；其他模型、协议、端点及离线模式继续为 **32000**。模型注册、SDK 输出裁剪与本地两次容量检查共用该值；输出上限仍为 **12000**，另保留 **4096** 安全余量，有界上下文和已读值延续保持。65536 是本应用的保守工作预算；2026-10-21 核对的[官方模型文档](https://api-docs.deepseek.com/quick_start/pricing/)列出该模型上下文为1M，不代表本项目使用或验证了全部容量。
-- 空值模板见 [.env.example](.env.example)，默认关闭真实模式。密钥只在本机服务端配置，不写入源码、页面或仓库。默认硬上限为每项目模型与Qloo各6次HTTP（网络）请求，本地每服务进程各12次；Vercel 数据库模式下部署合计上限仅在显式配置时生效（见 [DEPLOYMENT.md](docs/DEPLOYMENT.md)）。上限包含重试，并拒绝自动跳转。一次验证可以采用更小的独立上限；已记录的复用证据验证为模型3次、Qloo 0次，不构成新的调用授权。
-- 已选概念可按字段锁定：锁定字段不能被修改提案改动，也不能被接受写入；解锁不等于批准。提案板可在浏览器端导出 Markdown 提案包，内容包括确认内容、待审稿、版本记录和证据摘要，不含 Qloo 原始响应。
-- 当前不包含显式恢复历史版本、图像生成或长期记忆。部署由 Vercel 的 Git 集成在推送后触发，配置见 `vercel.json`。
+- Uses the public Node session API of `@qloo/qloo-harness@0.1.26`. The official runtime owns the tool loop.
+- The brief, constraints, evidence, concepts, locks, and run state live in the server project record. The chat transcript is not the only source. Local storage is JSON. The Vercel deployment stores projects in Postgres and restores them across function instances.
+- The server binds the project id. The model cannot submit one. The executor checks version, evidence ownership, actual fields and values, and literal constraints. Two concepts with no question may omit the question list or send an empty array.
+- Live mode needs an explicit provider, model, API protocol, endpoint, and Qloo configuration, plus a separately authorized call budget. One secret environment variable is not a complete configuration.
+- Local context budget: live mode with `deepseek-flash`, the `openai-completions` protocol, and the official HTTPS `api.deepseek.com` origin uses **65536 tokens**. Other models, protocols, endpoints, and offline mode stay at **32000**. Model registration, SDK output clamping, and the two local capacity checks share that value. The output cap remains **12000**, with a **4096** safety margin. Bounded context and values already read are kept. 65536 is this app's conservative working budget. The [official model documentation](https://api-docs.deepseek.com/quick_start/pricing/) checked on 2026-10-21 lists a 1M context for that model. This project has not used or verified the full capacity.
+- The empty template is [.env.example](.env.example). Live mode is off by default. Keys stay in the local server configuration. They are not written into source, the page, or the repository. The code default is 6 model and 6 Qloo HTTP requests per project, and 12 of each per local server process. On Vercel with a database, a deployment-wide cap applies only when it is set explicitly (see [DEPLOYMENT.md](docs/DEPLOYMENT.md)). The cap includes retries and rejects automatic redirects. One validation run may use a smaller separate cap. The recorded evidence-reuse validation used 3 model requests and 0 Qloo requests. That does not authorize new calls.
+- A selected concept can be locked by field. A locked field cannot be changed by a revision proposal and cannot be written on accept. Unlocking is not approval. The board can export a Markdown proposal pack in the browser. It includes confirmed content, pending drafts, version history, and an evidence summary. It does not include raw Qloo responses.
+- There is no explicit restore of an older version, no image generation, and no long-term memory. Vercel's Git integration deploys after a push. See `vercel.json`.
 
-## License（许可证）
+## License
 
-本项目源码采用 [MIT License（MIT 许可证）](LICENSE)。第三方依赖、素材、内嵌项目及 Qloo 数据仍受各自许可与条款约束。
+Source in this project is under the [MIT License](LICENSE). Third-party dependencies, assets, embedded projects, and Qloo data remain under their own licenses and terms.

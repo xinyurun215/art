@@ -26,7 +26,7 @@ test('full concepts expose source participation and timing without a guessed dur
   assert.equal(fullConcepts.length, project.concepts.length);
   project.concepts.forEach((concept, index) => {
     assert.ok(fullConcepts[index].includes(escape(concept.mechanism.organization)), 'complete source field must be in the normal reading view');
-    assert.match(fullConcepts[index], /方案设想.*未实测/);
+    assert.match(fullConcepts[index], /proposal, not something that has been tried/);
     assert.doesNotMatch(fullConcepts[index], /原文时间信息：|按旅程推算|未明确 · 单轮时长/);
   });
   assert.equal(JSON.stringify(project), before, 'rendering must not rewrite saved content');
@@ -44,7 +44,7 @@ test('mechanism comparison retains the complete organization source', () => {
 test('missing organization stays unknown and local journey times are not promoted to total duration', () => {
   context.renderers.renderConcepts({ version: 1, concepts: [{ id: 'unknown', mechanism: { description: '倒置10秒' }, journey: [{ stage: '0–2分钟', action: '局部环节' }] }] });
   const full = elements.get('concepts').innerHTML.match(/<details class="concept-full"[^>]*>([\s\S]*?)<\/details>/)[1];
-  assert.match(full, /参与组织与时间安排<\/h5><p[^>]*><span class="unknown-note">未知 · 未返回<\/span>/);
+  assert.match(full, /Participation and timing<\/h5><p[^>]*><span class="unknown-note">Unknown · not returned<\/span>/);
   assert.doesNotMatch(full, /按旅程推算|原文时间信息：/);
   assert.match(full, /0–2分钟/);
 });

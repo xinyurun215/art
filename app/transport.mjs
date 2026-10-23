@@ -187,11 +187,11 @@ export function toolFeedback(project, code, path, reason, correctable = false, n
     ...(diagnostic && ['expectedType', 'actualType', 'valueState'].every(key => typeof diagnostic[key] === 'string')
       ? { expectedType: diagnostic.expectedType, actualType: diagnostic.actualType, valueState: diagnostic.valueState } : {}),
     remainingBudget: remaining,
-    nextAction: remaining.modelHttpAttempts === 0 ? '模型 HTTP 额度已用尽；保留当前状态并暂停，禁止继续模型请求。'
+    nextAction: remaining.modelHttpAttempts === 0 ? 'The model HTTP budget is exhausted. Keep the current state and pause. Do not send another model request.'
       : remaining.qlooHttpAttempts === 0 ? project.revisionRequest
-        ? '禁止继续 Qloo 查询；仅使用已有精确证据提出 pending 待审修改，或以 needs_input/conflict 提出一个问题并暂停；正式版本保持不变。'
-        : '禁止继续 Qloo 查询；仅使用已有精确证据提交标明边界的草案，或以 insufficient_evidence 暂停。'
-      : nextAction ?? '根据反馈修正参数；引用已有实际字段，证据不足则以 insufficient_evidence 提交草案或暂停。' };
+        ? 'Do not query Qloo again. Using only exact existing evidence, submit a pending revision, or pause with needs_input or conflict and exactly one question. The confirmed version stays unchanged. Write the revision in English.'
+        : 'Do not query Qloo again. Using only exact existing evidence, submit a draft that marks facts, inferences, and unknowns, or pause with insufficient_evidence. Write it in English.'
+      : nextAction ?? 'Correct the arguments from this feedback. Cite actual returned fields. If the evidence is insufficient, submit an insufficient_evidence draft or pause. Write every user-visible string in English.' };
 }
 
 export function recordLocalFailure(project, kind, code, reason) {

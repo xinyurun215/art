@@ -306,9 +306,9 @@ function checkedEvidenceRef(project, link, path) {
   revisionEnsure(nonempty(link.inspiration), '请说明设计推断并保留未验证边界', `${path}/inspiration`);
   return { evidenceId: link.evidenceId, entityId: link.entityId, observedField: link.observedField,
     observedValue: structuredClone(actual), basis,
-    observation: `实际返回 ${link.observedField} = ${JSON.stringify(actual)}；${basis === 'affinity'
-      ? '仅为本次请求的文化亲和关联，不是描述、设计评分或效果预测。'
-      : basis === 'description' ? '这是实体描述，不是文化亲和关联分数或受众效果证据。' : '仅能证明该字段实际返回。'}`,
+  observation: `Returned ${link.observedField} = ${JSON.stringify(actual)}. ${basis === 'affinity'
+    ? 'This is only this request\'s cultural affinity association, not a description, a design score, or an effect prediction.'
+    : basis === 'description' ? 'This is an entity description, not a cultural affinity score or evidence of audience effect.' : 'This only proves that the field was actually returned.'}`,
     inspiration: link.inspiration };
 }
 function checkRevisionField(project, field, after, before, path) {

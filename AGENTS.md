@@ -1,6 +1,6 @@
-# 工作约定
+# Working agreements
 
-- 开发前先阅读 [docs/PRODUCT.md](docs/PRODUCT.md)，它是完整产品定位与范围的唯一依据。
-- 未经用户确认，不改变产品方向、扩大范围或将待验证假设写成事实。
-- 实现、真实 API（应用程序接口）调用、提交、推送与部署以当轮用户授权为准；后续切片本身不构成授权。
-- 精准修改，优先最少必要实现；只做与任务直接相关的验证，未要求时不运行静态检查。
+- Read [docs/PRODUCT.md](docs/PRODUCT.md) before development. It is the only source for product position and scope.
+- Do not change product direction, widen scope, or write an unverified assumption as fact unless the user confirms it.
+- Implementation, live API calls, commits, pushes, and deploys require authorization in the current turn. A later slice is not that authorization.
+- Change only what the task needs. Verify only what the task touches. Do not run a static check unless asked.

@@ -31,7 +31,7 @@ test('localized revision stores authoritative before and keeps confirmed concept
   const pending = proposeRevision(project, revisionInput(request));
   assert.equal(pending.status, 'pending');
   assert.deepEqual(pending.changes[0].before, before[0].mechanism);
-  assert.match(pending.changes[0].evidenceRefs[0].observation, /实际返回.*同步节奏/);
+  assert.match(pending.changes[0].evidenceRefs[0].observation, /Returned.*同步节奏/);
   assert.equal(pending.changes[0].evidenceRefs[0].basis, 'description');
   assert.deepEqual(project.concepts, before);
   assert.deepEqual(project.evidence, evidence);

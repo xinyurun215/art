@@ -29,12 +29,12 @@ test('history exposes complete impact and unknowns as separate readable lists be
   const normal = boundaries(html);
   assert.ok(normal, 'impact and unknowns must have a normal reading area outside raw JSON');
   const sections = [...normal.matchAll(/<section><h5>(.*?)<\/h5><ul>([\s\S]*?)<\/ul><\/section>/g)];
-  assert.deepEqual(sections.map(section => section[1]), ['受影响的环节', '仍然未知']);
+  assert.deepEqual(sections.map(section => section[1]), ['What this affects', 'Still unknown']);
   for (const [index, values] of [revision.impact, revision.unknowns].entries()) {
     assert.deepEqual([...sections[index][2].matchAll(/<li>([\s\S]*?)<\/li>/g)].map(match => match[1]), values.map(escape));
   }
   assert.ok(html.indexOf('class="pending-boundaries"') < html.indexOf('class="field-diffs"'));
-  assert.match(html, /接受修改不代表.*已实测.*未知已解决/);
+  assert.match(html, /Accepting a change does not mean its effects were tried or that unknowns were resolved/);
   assert.equal(JSON.stringify(project), before, 'rendering must not mutate saved data');
 });
 
@@ -43,7 +43,7 @@ test('history keeps readable comparisons without exposing raw records or identif
   const html = elements.get('revision-records').innerHTML;
   assert.doesNotMatch(html, /raw-record|原始 JSON/);
   assert.ok(!html.includes(`>${escape(revision.id)}<`), 'revision identifiers must not be shown as content');
-  assert.ok(html.includes('查看当时的修改与依据'));
+  assert.ok(html.includes('See the change and its basis at the time'));
   assert.equal((html.match(/<article class="field-diff">/g) || []).length, revision.changes.length);
 });
 
@@ -51,8 +51,8 @@ test('empty or absent historical fields remain explicitly unrecorded, never reso
   for (const fields of [{ impact: [], unknowns: [] }, { impact: undefined, unknowns: undefined }]) {
     context.renderRevision({ ...project, revisions: [{ ...revision, ...fields }] });
     const normal = boundaries(elements.get('revision-records').innerHTML);
-    assert.match(normal, /受影响的环节<\/h5><ul><li>未说明<\/li>/);
-    assert.match(normal, /仍然未知<\/h5><ul><li>未记录不代表已验证<\/li>/);
+    assert.match(normal, /What this affects<\/h5><ul><li>Not stated<\/li>/);
+    assert.match(normal, /Still unknown<\/h5><ul><li>Unrecorded does not mean verified<\/li>/);
   }
 });
 

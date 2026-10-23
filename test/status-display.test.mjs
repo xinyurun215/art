@@ -35,12 +35,12 @@ test('accepted/live-off shows confirmed content and a viewing next step; interna
   const before = JSON.stringify(saved);
   screen.state.config = config(false);
   screen.renderProject(saved);
-  assert.match(overview(screen), /修改已接受.*已确认 v3/);
-  assert.match(overview(screen), /查看已确认方案/);
-  assert.doesNotMatch(overview(screen), /等待你审查|继续修改已选方向/);
+  assert.match(overview(screen), /Change accepted.*confirmed v3/);
+  assert.match(overview(screen), /View the confirmed proposal/);
+  assert.doesNotMatch(overview(screen), /waiting for your review|Keep revising the selected direction/);
   assert.doesNotMatch(screen.get('project-status').innerHTML, /REVISION_RESPONSE_SAVED|pending 待审修改|请求预留|模型 8|Qloo 4|raw-record/);
   for (const id of ['send-message', 'message', 'submit-revision', 'revision-text']) assert.equal(screen.get(id).disabled, true, id);
-  assert.match(screen.get('revision-note').textContent, /当前无法生成新修改/);
+  assert.match(screen.get('revision-note').textContent, /a new change cannot be generated/);
   assert.doesNotMatch(screen.get('concepts').innerHTML, /已选择 · 继续修改此概念/);
   assert.equal(JSON.stringify(saved), before, 'display must not mutate the saved project');
 });
@@ -53,33 +53,33 @@ test('pending can still be reviewed locally with live off; feedback generation f
     const screen = ui();
     screen.state.config = config(enabled);
     screen.renderProject(pending);
-    assert.match(overview(screen), /等待你审查/);
-    assert.match(overview(screen), /审阅待审修改/);
-    assert.doesNotMatch(overview(screen), /修改已接受/);
+    assert.match(overview(screen), /waiting for your review/);
+    assert.match(overview(screen), /Review the pending change/);
+    assert.doesNotMatch(overview(screen), /Change accepted/);
     assert.deepEqual(screen.decisions.map(button => button.disabled), [false, false]);
     assert.equal(screen.get('submit-pending-feedback').disabled, !enabled);
     assert.equal(screen.get('pending-feedback-text').disabled, !enabled);
-    assert.match(screen.get('pending-feedback-note').textContent, enabled ? /反馈会交给模型/ : /可接受或拒绝.*无法生成/);
+    assert.match(screen.get('pending-feedback-note').textContent, enabled ? /Feedback goes to the model/ : /accept or reject.*cannot be generated/);
   }
 });
 
 test('service status is distinct from saved live provenance and from the new-project mode selector', () => {
-  for (const [settings, expected, disabled] of [[config(false), '真实服务已关闭', true],
-    [config(true, false), '真实服务未就绪', true], [config(true), '真实服务已启用', false]]) {
+  for (const [settings, expected, disabled] of [[config(false), 'Live service is off', true],
+    [config(true, false), 'Live service is not ready', true], [config(true), 'Live service is on', false]]) {
     const screen = ui();
     screen.state.config = settings;
     screen.get('mode').value = 'offline';
     screen.renderProject(saved);
     assert.equal(screen.get('test-label').textContent, expected);
-    assert.match(screen.get('mode-explanation').textContent, /已保存的真实生成项目/);
+    assert.match(screen.get('mode-explanation').textContent, /Saved project from live generation/);
     assert.doesNotMatch(screen.get('mode-explanation').textContent, /使用模型与 Qloo 服务/);
     assert.equal(screen.get('submit-revision').disabled, disabled);
-    assert.match(overview(screen), disabled ? /查看已确认方案/ : /继续修改已选方向/);
+    assert.match(overview(screen), disabled ? /View the confirmed proposal/ : /Keep revising the selected direction/);
     const offline = { ...saved, mode: 'offline', provenance: { kind: 'historical_copy' } };
     screen.renderProject(offline);
-    assert.match(screen.get('mode-explanation').textContent, /离线模拟.*不调用真实服务/);
+    assert.match(screen.get('mode-explanation').textContent, /Offline simulation.*does not call a live service/);
     assert.equal(screen.get('submit-revision').disabled, false);
-    assert.match(screen.get('project-status').innerHTML, /本轮未重新查询/);
+    assert.match(screen.get('project-status').innerHTML, /Nothing was queried again this round/);
   }
 });
 
@@ -97,7 +97,7 @@ test('configuration arriving before or after the project yields the same guidanc
       await screen.loadConfig();
       if (!projectFirst) screen.renderProject(saved);
       results.push([overview(screen), screen.get('test-label').textContent, screen.get('submit-revision').disabled]);
-      if (!settings) assert.match(screen.get('test-label').textContent, /状态待确认/);
+      if (!settings) assert.match(screen.get('test-label').textContent, /not confirmed yet/);
     }
     assert.deepEqual(results[0], results[1]);
   }
@@ -106,10 +106,10 @@ test('configuration arriving before or after the project yields the same guidanc
 test('a later active or failed request is not masked by an old accepted revision', () => {
   const screen = ui();
   screen.state.config = config(true);
-  for (const [phase, status, expected] of [['busy', 'running', '智能体正在处理'], ['revision_needs_input', 'needs_input', '修改前还需要确认'], ['error', 'error', '本轮未完成']]) {
+  for (const [phase, status, expected] of [['busy', 'running', 'The agent is working'], ['revision_needs_input', 'needs_input', 'One condition must be confirmed before the change'], ['error', 'error', 'This round did not finish']]) {
     screen.renderProject({ ...saved, status: { phase, detail: '当前处理信息' }, revisionRequest: { status, detail: '当前处理信息' } });
     assert.ok(overview(screen).includes(expected));
-    assert.doesNotMatch(overview(screen), /修改已接受/);
+    assert.doesNotMatch(overview(screen), /Change accepted/);
   }
 });
 
@@ -120,8 +120,8 @@ test('live-off clarification and failure notices do not instruct users to submit
     for (const kind of [undefined, 'pending_feedback']) {
       screen.renderProject({ ...saved, status: { phase: 'error' }, revisionRequest: { status, kind, question: '原问题保留' } });
       assert.match(screen.get('revision-feedback').innerHTML, /原问题保留/);
-      assert.match(screen.get('revision-feedback').innerHTML, /当前无法重试/);
-      assert.doesNotMatch(screen.get('revision-feedback').innerHTML, /补充答案，再继续|调整后重试|可重新提出修改/);
+      assert.match(screen.get('revision-feedback').innerHTML, /cannot be retried now/);
+      assert.doesNotMatch(screen.get('revision-feedback').innerHTML, /Add the answer in the revision box|adjust the feedback on that draft and try again|propose the change again/);
     }
   }
 });
