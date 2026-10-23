@@ -103,7 +103,7 @@ test('failed and irrelevant queries remain explicitly insufficient and have no e
     const { project, runtime } = await readyProject(scenario);
     try {
       assert.equal(project.status.phase, 'insufficient_evidence');
-      assert.match(project.status.detail, /证据不足/);
+      assert.match(project.status.detail, /Not enough evidence/);
       assert(project.concepts.every(c => c.evidenceLinks.length === 0));
       assert.equal(project.evidence.length, scenario === 'failure' ? 0 : 1);
       if (scenario === 'irrelevant') assert.equal(project.evidence[0].relevant, false);
@@ -144,7 +144,7 @@ test('same-session explicit reuse reads authoritative evidence without another q
     project.status.phase = 'busy';
     await runtime.submit('请把核心故事改成别的主题');
     assert.equal(project.status.phase, 'insufficient_evidence');
-    assert.match(project.status.detail, /离线模拟无法理解/);
+    assert.match(project.status.detail, /cannot understand arbitrary feedback/);
     assert.equal(project.actions.filter(a => a.type === 'query').length, queryCount);
   } finally { await runtime.dispose(); }
   const empty = createProject({ brief });
@@ -332,7 +332,7 @@ test('live project latches after returned or thrown official query errors and bl
       const result = await executor.execute(operation, {}, { correlationId: 'blocked-next-call' });
       assert.equal(result.result.status, 'error');
       assert.equal(result.result.queryStopped, true);
-      assert.match(result.result.summary, /后续查询与替代请求均被阻止/);
+      assert.match(result.result.summary, /Further queries and substitute requests are blocked/);
       assert.deepEqual(result.result.results, []);
     }
     assert.equal(executions, 1);

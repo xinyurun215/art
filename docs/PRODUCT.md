@@ -1,160 +1,160 @@
-# 品牌快闪体验设计 Agent（智能体）产品约定
+# Product agreement: brand pop-up experience design agent
 
-产品方向确认日期：2026-10-17；阶段状态更新：2026-10-18。
+Product direction confirmed: 2026-10-17. Stage status updated: 2026-10-18.
 
-本文是完整产品定位与范围的唯一依据。方向由用户确认；正式产品名待定，当前名称仅描述用途，不据此重命名仓库。以下能力描述**计划范围**，不能据此声称全部实现或通过产品验证。已完成的本地运行时接入、工作台、反馈与提案契约修复，以及各层验证边界，见 [阶段验证结论](VALIDATION.md)。
+This document is the only source for product position and scope. The direction was confirmed by the user. The formal product name is not decided. The current name only describes the use, and it is not a reason to rename the repository. The capabilities below are **planned scope**. They are not a claim that everything is implemented or that the product has passed validation. Completed local runtime integration, the workspace, feedback and proposal contract fixes, and the boundary of each validation layer are in [stage validation](VALIDATION.md).
 
-本文最初用于建立产品约定。后续实现、真实 API（应用程序接口）调用、提交、推送、公开发布、添加许可证与部署，分别以用户当轮明确授权为准；后续切片本身不构成授权。阶段保存不等于完整产品验收。
+This document was first written to set the product agreement. Later implementation, live API calls, commits, pushes, public release, adding a license, and deployment each require explicit authorization in that turn. A later slice is not that authorization. Saving a stage is not full product acceptance.
 
-## 1. 目标与价值假设
+## 1. Goal and value hypothesis
 
-服务小型创意团队中负责品牌快闪活动的体验设计师和创意策划。核心任务是将客户需求与受众文化研究，转化为有依据、可讨论、可编辑的早期体验提案。
+The product serves experience designers and creative planners on small teams who run brand pop-ups. The core task is to turn a client brief and audience cultural research into an early experience proposal that has a basis, can be discussed, and can be edited.
 
-主方向已从 TasteTrip 多人旅行转为品牌快闪体验设计。旧 TasteTrip 项目单独保留、不改动，不将旅行推荐、公平性算法、路线规划或旧页面带入核心产品。
+The main direction has moved from TasteTrip multi-person travel to brand pop-up experience design. The old TasteTrip project stays separate and unchanged. Travel recommendations, fairness algorithms, route planning, and the old pages do not enter this product.
 
-**价值假设，尚未验证：**客户意见变化时，文化证据能够推动新的设计选择，保留已确认内容，并让修改依据可审查。更长的方案、更多工具调用和复用现有代码的便利都不构成产品价值或范围依据。用户希望争取奖项，但当前不宣称获奖能力、独特性或市场空白。
+**Value hypothesis, not yet verified:** when the client's opinion changes, cultural evidence can drive a new design choice, keep confirmed content, and leave the reason for the change open to review. A longer proposal, more tool calls, and the convenience of reusing existing code are not product value and are not a reason to widen scope. The user wants to compete for an award. This document does not claim award-winning ability, uniqueness, or an empty market.
 
-## 2. 输入与信息可信度
+## 2. Input and how trustworthy it is
 
-可能需要的输入包括：品牌或产品、活动目标、目标受众的文化参考、城市与已知场地条件、预算区间、时间限制、必须保留项及禁止项。不设置强制长表单；只追问会影响下一步决策的信息。
+Possible inputs include: brand or product, activity goal, cultural references for the intended audience, city and known venue conditions, budget range, time limits, items that must stay, and items to avoid. There is no required long form. The agent asks only when a gap would change the next decision.
 
-必须区分并保留来源：
+Sources must stay distinct:
 
-- **客户提供的事实：**注明提供者或材料来源；未经独立核实时，不写成已核实事实。
-- **设计师假设：**明确标注假设及其影响。
-- **外部查询证据：**保留实际查询背景、来源与适用边界。
+- **Facts from the client:** name the person or material. If it has not been checked independently, do not write it as a verified fact.
+- **Designer assumptions:** mark the assumption and what it affects.
+- **Evidence from an external query:** keep the actual query context, the source, and where it applies.
 
-用户提供的少量音乐、电影等偏好只是待研究信号，不是经验证的受众画像。若 Qloo 不覆盖客户品牌，先请用户确认用于研究的代理品牌或实体；代理信号不代表真实客户画像。
+A few music or film preferences from the user are signals to research. They are not a verified audience profile. If Qloo does not cover the client brand, ask the user to confirm a proxy brand or entity for research. A proxy signal is not the real client profile.
 
-## 3. V1（首版）的提案板与交付物
+## 3. V1 proposal board and deliverables
 
-核心产物是持续更新、可编辑的项目提案板，包括：
+The core artifact is a project proposal board that stays current and can be edited. It includes:
 
-1. 已确认需求、限制条件与开放问题。
-2. 带查询上下文的 Qloo 证据卡。
-3. **两个实质不同的概念：**区别体现在参与机制或产品互动方式，而非名称、语气或文案。每个概念说明“为什么来、进来做什么、如何接触产品、带走什么”。
-4. 已选方案、锁定部分、待审修改与版本记录。
-5. 未知与不确定性，以及可导出的提案包。
+1. Confirmed requirements, limits, and open questions.
+2. Qloo evidence cards with the query context.
+3. **Two substantively different concepts.** The difference is how people participate or how they meet the product, not the name, tone, or copy. Each concept says why someone comes, what they do inside, how they meet the product, and what they take away.
+4. The selected proposal, locked parts, pending changes, and version history.
+5. Unknowns, and a proposal pack that can be exported.
 
-草图可在后续作为可选辅助，不是首版成立的前提。这些是早期体验提案，不是施工方案，不保证工程预算、场地安全或活动效果。
+Sketches can be an optional aid later. They are not required for the first version to stand. These are early experience proposals, not construction documents. They do not guarantee engineering budget, venue safety, or event results.
 
-## 4. Qloo 证据与使用边界
+## 4. Qloo evidence and how it may be used
 
-使用已确认的文化实体与适用的地理筛选，沿官方工作流做必要查询；实际结果必须影响概念探索或选择，不为展示工具而遍历全部接口。官方套件说明 `@qloo/qloo-harness` 将共享工作流用于 explore（探索）、CLI（命令行接口）和 MCP（模型上下文协议）。这只证明文档所述能力，不证明整个产品运行时已兼容。[官方套件](https://github.com/qloo/qloo-hackathon-kit)
+Use confirmed cultural entities and a geographic filter when it applies. Follow the official workflow for the queries that are actually needed. The result must affect concept exploration or the choice. Do not walk every endpoint just to show tools. The official kit says `@qloo/qloo-harness` shares a workflow across explore, the CLI, and MCP. That only proves what the documentation says. It does not prove the whole product runtime is compatible. [Official kit](https://github.com/qloo/qloo-hackathon-kit)
 
-证据卡至少保存以下内容；以实际可取得字段为准，缺失项明确标为未知，不伪造接口字段：
+An evidence card keeps at least the following. Use fields that were actually returned. Mark missing items unknown. Do not invent API fields.
 
-| 内容 | 最小要求 |
+| Content | Minimum |
 | --- | --- |
-| 查询背景 | 要解决的设计问题；已确认实体的 ID（标识符）、类型与名称；是否为代理及其确认记录 |
-| 地理与执行上下文 | 城市或地理范围、筛选是否适用、官方工作流及输入、安全的请求引用、查询时间 |
-| 实际结果 | 返回实体的标识符、实际返回字段、来源与证据引用 |
-| 设计关联 | 支持或改变了哪项设计选择、如何转译、仍缺什么证据 |
+| Query context | The design question; id, type, and name of each confirmed entity; whether it is a proxy, and the confirmation record |
+| Place and execution | City or geographic range, whether the filter applies, the official workflow and its input, a safe request reference, and the query time |
+| Actual result | Ids of returned entities, fields actually returned, source, and evidence references |
+| Design link | Which design choice it supports or changes, how it was translated, and what evidence is still missing |
 
-安全请求引用应可追查必要上下文，但不得包含密钥或无关个人信息。原始数据的保留、展示和导出遵循适用数据条款，不默认可永久保存或公开完整响应。[安全使用说明](https://github.com/qloo/qloo-hackathon-kit/blob/main/docs/SAFE_USE.md)
+A safe request reference must be enough to trace the needed context. It must not contain secrets or unrelated personal data. Keeping, showing, and exporting raw data follows the applicable data terms. A full response is not kept or published by default. [Safe use](https://github.com/qloo/qloo-hackathon-kit/blob/main/docs/SAFE_USE.md)
 
-每个关键主张必须拆开表达：
+Each important claim is split:
 
-- **数据事实：**实际输入实体、返回字段及来源。
-- **设计推断：**为什么把这些文化关联转译为某种体验机制。
-- **未验证效果：**吸引力、参与度、转化等需要另行验证的结果。
+- **Data fact:** the actual input entities, returned fields, and source.
+- **Design inference:** why those cultural associations were translated into an experience mechanism.
+- **Unverified effect:** appeal, participation, conversion, and other results that still need a separate check.
 
-禁止把 affinity（文化亲和关联）当作审美分数、方案质量评分、设计适配概率或效果预测；popularity（流行度）不能替代文化亲和关联；不假定不同请求的分数可直接比较。聚合文化关联不能证明个体行为概率或因果效果。[安全使用说明](https://github.com/qloo/qloo-hackathon-kit/blob/main/docs/SAFE_USE.md)
+Do not treat affinity as an aesthetic score, a proposal-quality score, a probability that a design fits, or an effect prediction. Popularity cannot stand in for affinity. Do not assume scores from different requests can be compared directly. An aggregated cultural association does not prove an individual's behavior or a causal effect. [Safe use](https://github.com/qloo/qloo-hackathon-kit/blob/main/docs/SAFE_USE.md)
 
-文化数据也不能直接证明配色、材料、动线、版权授权、真实报价或合作方可用性。缺少支持时写明“证据不足”或“未知”，不强行给每个概念配证据。请求从最小必要范围开始，限制重试与额度，避免无关个人数据，并保护秘密信息。[访问与额度说明](https://github.com/qloo/qloo-hackathon-kit/blob/main/docs/API_ACCESS.md)
+Cultural data also does not prove color, material, circulation, rights clearance, a real quote, or that a partner is available. When support is missing, write "not enough evidence" or "unknown". Do not force evidence onto every concept. Start from the smallest query that is needed, limit retries and budget, avoid unrelated personal data, and protect secrets. [Access and quota](https://github.com/qloo/qloo-hackathon-kit/blob/main/docs/API_ACCESS.md)
 
-## 5. 智能体如何工作
+## 5. How the agent works
 
-智能体在任务与资源边界内决定：下一步澄清什么、查询什么、比较什么，是否修改初始想法、提出方案或暂停。工具结果返回模型，作为下一步决策依据；不是固定流水线结束后仅调用一次模型润色文案。每轮也不强制重复“澄清—查询—提案”或工具演示。
+Inside the task and resource limits, the agent decides what to clarify next, what to query, what to compare, whether to change the first idea, whether to propose, or whether to pause. Tool results go back to the model and inform the next decision. This is not a fixed pipeline that calls the model once at the end to polish copy. A turn also does not have to repeat "clarify, query, propose" or demonstrate tools.
 
-代码负责输入校验、工具权限、资源上限、项目隔离、版本一致性、锁定内容与批准规则。用户确认重要歧义、取舍、方向变化及正式修改。界面展示简短行动理由、工具记录与可核查证据，不要求或展示模型私有推理。
+Code checks input, tool permission, resource caps, project isolation, version consistency, locked content, and approval rules. The user confirms important ambiguity, tradeoffs, a change of direction, and a formal edit. The interface shows a short reason for the action, the tool record, and evidence that can be checked. It does not ask for or show the model's private reasoning.
 
-## 6. 项目状态、锁定与修改规则
+## 6. Project state, locks, and edits
 
-权威状态是项目记录，不是聊天记录。至少保存需求、已确认实体、约束、证据引用、方案、已选版本、锁定项、待审修改及版本历史。
+The authority is the project record, not the chat transcript. It keeps at least the brief, confirmed entities, constraints, evidence references, proposals, the selected version, locks, pending changes, and version history.
 
-模型只通过受约束工具提出限定范围的变更，不能任意覆盖完整项目状态。修改携带项目与基础版本校验，拒绝过期版本和跨项目写入。
+The model proposes a limited change only through a constrained tool. It cannot overwrite the whole project. A change carries the project and base version. Stale versions and writes into another project are rejected.
 
-1. 用户可锁定已确认内容；模型不得自动解锁。
-2. 请求涉及锁定项时，先展示影响并请用户决定是否解锁。**解锁不等于批准修改。**
-3. 模型提出待审差异、依据与未知项；用户批准前，正式版本保持不变。
-4. 用户拒绝待审修改时，正式版本不变。恢复某个已确认版本必须是显式操作，并留下历史。
-5. 刷新或恢复当前项目时，正确还原并区分正式内容与待审内容。
+1. The user can lock confirmed content. The model cannot unlock it.
+2. When a request touches a locked item, show the effect and let the user decide whether to unlock. **Unlocking is not approval of the change.**
+3. The model proposes a pending difference, its basis, and unknowns. Until the user approves, the confirmed version stays as it is.
+4. If the user rejects a pending change, the confirmed version stays. Restoring an older confirmed version must be an explicit action and must leave a history.
+5. Refreshing or restoring the current project brings back confirmed content and pending content as separate things.
 
-切片一考虑支持上述状态的数据结构；完整保存、恢复与刷新验收放在切片三，不提前建设重型平台。V1 不包含向量数据库、跨客户画像、长期自动偏好学习或多人实时协作。
+Slice one considers the data shape for this state. Full save, restore, and refresh acceptance belong to slice three. Do not build a heavy platform early. V1 does not include a vector database, cross-client profiles, long-running automatic preference learning, or multi-person live collaboration.
 
-## 7. 官方能力复用与运行时选择
+## 7. Reusing official capability and choosing a runtime
 
-以官方 `@qloo/qloo-harness` 为基础，不重写传输层、MCP 或通用智能体内核。**先验证官方完整智能体运行时**是否满足自定义产品工具、网页调用、会话恢复和部署要求。证明足够后优先复用；只有得到具体接口或运行时不兼容证据，才考虑成熟工具调用框架加官方 Qloo 执行器。接口存在本身不等于完整兼容，也不提前决定运行时、模型提供商、数据库、依赖版本或替代路线。
+Build on the official `@qloo/qloo-harness`. Do not rewrite the transport, MCP, or a general agent kernel. **First check whether the official full agent runtime** can support custom product tools, calls from the web, session restore, and deployment. If it is enough, reuse it. Consider a mature tool-calling framework plus the official Qloo executor only with concrete evidence that an interface or the runtime is incompatible. An interface existing is not full compatibility. Do not decide the runtime, model provider, database, dependency versions, or a fallback path before that evidence.
 
-已只读核对的官方文档范围：agent-chat 的 explore 模式可读取、搜索、列出项目及调用 Qloo 工作流，不能执行 shell（命令解释器）或修改项目文件，可保存自身私有状态；integrate、plan、build 模式不在该赛事支持范围内。这些是**文档声明范围**，不能据此推断完整运行时一定兼容或一定无法兼容。[官方智能体示例说明](https://github.com/qloo/qloo-hackathon-kit/blob/main/starter/agent-chat/README.md)
+Official docs checked read-only: explore mode in agent-chat can read, search, list projects, and call Qloo workflows. It cannot run a shell or edit project files. It can save its own private state. Integrate, plan, and build modes are outside what this contest supports. That is **what the docs claim**. It does not prove the full runtime is compatible, or that it cannot be. [Official agent example](https://github.com/qloo/qloo-hackathon-kit/blob/main/starter/agent-chat/README.md)
 
-用户提供的**历史证据，非本轮复验：**官方 Node.js 执行器 `0.1.26` 曾在本地和受保护的 Vercel Preview（预览部署）真实调用成功。它不证明完整设计智能体可部署，也不构成本轮锁定版本的依据。竞赛端点与默认端点不同，后续必须显式核对，不允许静默回退。
+**Historical evidence from the user, not rechecked this round:** the official Node.js executor `0.1.26` once succeeded on a real call locally and on a protected Vercel Preview. That does not prove a full design agent can be deployed, and it is not a reason to lock a version for this round. The contest endpoint and the default endpoint differ. Later work must check the endpoint explicitly. Silent fallback is not allowed.
 
-所有秘密信息仅在服务端使用，不进入文档、日志、前端或仓库。本轮不新增或固定依赖版本。
+Secrets are used only on the server. They do not go into docs, logs, the frontend, or the repository. This round does not add dependencies or pin new versions.
 
-## 8. 工作空间与界面原则
+## 8. Workspace and interface
 
-同一工作空间同时呈现需求与提案板、智能体对话及行动记录。当前产物始终可见，用户可检查证据、比较概念、锁定内容与审查修改差异；整个产品不退化为一串聊天记录。
+One workspace shows the brief and proposal board, the agent conversation, and the activity record at the same time. The current artifact stays visible. The user can check evidence, compare concepts, lock content, and review a change. The product does not collapse into a chat transcript.
 
-视觉风格待定，不沿用 TasteTrip 的水墨或旅行装饰。本轮不设计或实现界面。
+Visual style is not decided. Do not reuse TasteTrip ink-wash or travel decoration. This round does not design or build the interface.
 
-## 9. 明确排除
+## 9. Explicitly out of scope
 
-- 旅行产品、通用编排平台、多智能体分工框架和完整品牌咨询服务。
-- CAD（计算机辅助设计）或施工图、自动联系供应商、采购、预订、支付。
-- 版权保证、虚构报价、合作方可用性保证和活动效果预测。
-- 为复用方便而引入的无关算法、页面或旧项目功能。
+- A travel product, a general orchestration platform, a multi-agent division-of-labor framework, and a full brand-consulting service.
+- CAD or construction drawings, contacting suppliers automatically, purchasing, booking, and payment.
+- A guarantee of rights, invented quotes, a guarantee that a partner is available, and a prediction of event results.
+- Unrelated algorithms, pages, or old-project features brought in because they are easy to reuse.
 
-## 10. 后续切片与验收顺序
+## 10. Later slices and the order of acceptance
 
-以下是**未来实施顺序**，不是本轮实现或真实接口调用授权。
+The following is a **future implementation order**. It is not authorization to implement this round or to call a live API.
 
-| 切片 | 范围 | 完成标准 |
+| Slice | Scope | Done when |
 | --- | --- | --- |
-| 一 | 需求 → 官方真实 Qloo 证据 → 两个可审查概念；考虑必要状态结构 | 关键设计选择可追溯到实际响应；证据不足时调整研究、追问或如实报告，不能编造 |
-| 二 | 选方案 → 锁定部分 → 反馈 → 限定范围修改 → 审查批准 | 受影响部分正确更新；锁定内容保持；批准前正式版本不变 |
-| 三 | 可靠保存、恢复、导出、公开部署与全新非预置输入验收 | 刷新正确恢复正式与待审状态；非固定样例输入走通端到端流程，并验证导出和实际部署行为 |
+| 1 | Brief to official live Qloo evidence to two reviewable concepts; consider the state shape that is needed | A key design choice can be traced to an actual response. When evidence is thin, the research changes, a question is asked, or the gap is reported. Nothing is invented |
+| 2 | Choose a proposal, lock parts, give feedback, make a limited edit, review and approve | Affected parts update. Locked content stays. The confirmed version does not change before approval |
+| 3 | Reliable save, restore, export, public deployment, and acceptance with new input that is not a preset | Refresh restores confirmed and pending state correctly. An input that is not a fixed sample completes the flow, and export and the real deployment behavior are checked |
 
-每个切片分别记录实际证据。写出代码、通过本地检查、真实 API 成功、界面可用、公开部署与产品效果验证是不同结论，不互相替代。
+Each slice records the evidence it actually produced. Writing code, passing a local check, a successful live API call, a usable interface, public deployment, and a verified product effect are different conclusions. One does not stand in for another.
 
-## 11. 合成验收案例
+## 11. Synthetic acceptance case
 
-以下是虚构运动鞋品牌的快闪任务，用于约束行为；不是真实客户、真实 Qloo 查询或效果证据。受众给出音乐与电影参考，只作为未经验证的研究信号。客户要求必须保留试穿。
+This is a pop-up task for a fictional sneaker brand. It constrains behavior. It is not a real client, a real Qloo query, or evidence of effect. The audience gives music and film references only as unverified research signals. The client requires that try-on stay.
 
-两个暂定机制示例：
+Two provisional mechanisms, as examples:
 
-- 集体定时、音乐引导的试穿活动，结合现场表演。
-- 自主节奏的电影叙事探索，通过试穿挑战推进体验。
+- A scheduled group try-on led by music, with a live performance.
+- A self-paced film-narrative exploration that moves forward through try-on challenges.
 
-它们只是机制差异示例，不声称已有文化数据支持。真实概念仍取决于实际查询与限制条件。
+They only show that mechanisms can differ. They do not claim cultural data already supports them. A real concept still depends on the actual query and the limits.
 
-用户选择第一种并锁定试穿，随后要求取消现场表演、保留音乐文化。预期修改必须真正重做受影响的参与机制：重新审视到场理由、时间组织、现场活动、产品接触和带走的内容；锁定的试穿保持完整。可能以自主节奏或动作任务替代舞台等待，但这只是待证据和版权条件确认的设计推断，不能只换措辞或把它写成保证。
+The user picks the first, locks try-on, then asks to drop the live performance and keep the music culture. The expected edit must actually redo the affected participation: why people arrive, how time is organized, what happens on site, how they meet the product, and what they take away. The locked try-on stays whole. A self-paced activity or a movement task might replace waiting for a stage, but that is a design inference that still needs evidence and a rights check. It is not a wording swap and it is not a guarantee.
 
-系统展示待审差异、修改依据及未知项；批准前正式版本不变。拒绝修改后正式版保持，显式恢复保留历史，刷新后正式与待审状态区分正确。此案例不使用虚构 Qloo 实体或数字，也不能替代切片一的真实证据验收。
+The system shows the pending difference, the basis, and the unknowns. The confirmed version does not change before approval. After a rejection, the confirmed version stays. An explicit restore keeps history. After refresh, confirmed and pending state stay distinct. This case does not use invented Qloo entities or numbers, and it does not replace the live evidence acceptance in slice one.
 
-## 12. 赛事与相邻作品的证据范围
+## 12. Contest rules and nearby work, as evidence
 
-截至 2026-10-17，只读核对的赛事提交说明要求：可端到端运行、公开外部托管的应用，公开源代码仓库，文字说明，以及可见的开源许可证；演示视频不属于必交项。三分钟可作为内部演示目标，不能写成正式视频提交规则。这些未来交付要求不授权本轮公开仓库内容、添加许可证或部署。[赛事提交要求](https://qloo.devpost.com/)；[官方提交指南](https://github.com/qloo/qloo-hackathon-kit/blob/main/docs/SUBMISSION.md)
+As checked read-only on 2026-10-17, the contest submission notes require: an app that runs end to end, hosted publicly, a public source repository, a written explanation, and a visible open-source license. A demo video is not required. Three minutes can be an internal demo target. It is not a formal video rule. These future delivery requirements do not authorize publishing repository content, adding a license, or deploying in this round. [Contest requirements](https://qloo.devpost.com/); [official submission guide](https://github.com/qloo/qloo-hackathon-kit/blob/main/docs/SUBMISSION.md)
 
-以下只检查了公开介绍页面，未测试应用或审计源码；内容是作者自述，未经独立验证，竞品覆盖也不完整：
+The notes below only looked at public introduction pages. The apps were not tested and the source was not audited. The text is the authors' own description, not independently verified, and the set of nearby work is incomplete.
 
-| 相邻作品 | 公开描述与本项目的关系 |
+| Nearby work | Public description and how it sits next to this project |
 | --- | --- |
-| [CultOS](https://devpost.com/software/cultos-autonomous-cultural-intelligence-engine) | 作者描述现场音乐赞助与文化激活，涉及品牌文化体验的相邻场景 |
-| [FanFit](https://github.com/brainupgrade-in/fanfit) | README 描述基于 Qloo 文化亲和关联的赞助合作方与证据卡，相邻于证据化策划 |
-| [GMM](https://devpost.com/software/gmm-tasteengine-cultural-graph-multi-agent-art-director) | 作者描述文化图谱、多智能体艺术指导及二维／三维资产，相邻于文化研究到创意输出 |
+| [CultOS](https://devpost.com/software/cultos-autonomous-cultural-intelligence-engine) | The author describes live-music sponsorship and cultural activation, a nearby scene for brand cultural experiences |
+| [FanFit](https://github.com/brainupgrade-in/fanfit) | The README describes sponsor partners and evidence cards from Qloo affinity, nearby to evidence-based planning |
+| [GMM](https://devpost.com/software/gmm-tasteengine-cultural-graph-multi-agent-art-director) | The author describes a cultural graph, multi-agent art direction, and 2D/3D assets, nearby to cultural research that becomes creative output |
 
-上述相邻关系是基于公开描述的推断，不证明本项目已有差异化，也不证明市场缺少同类产品；不采信未经验证的准确率、价格或独特性主张。
+Those relationships are inferences from public descriptions. They do not prove this project is different, and they do not prove the market lacks similar products. Unverified claims of accuracy, price, or uniqueness are not accepted.
 
-## 13. 尚待验证与决定
+## 13. Still to verify and still to decide
 
-- 尚未访谈目标设计师，真实需求与修改流程的价值未验证。
-- Qloo 在品牌快闪场景中的覆盖与实际设计价值未验证。
-- 官方运行时已完成本地接入、工具执行及提案链路验证；部署、跨进程恢复与完整 V1 的兼容性仍未验证。
-- 直接竞品调研不完整。
-- 正式名称、产品运行模型及提供商、存储方式、视觉风格待定。
+- Target designers have not been interviewed. The value of the real brief and the edit flow is not verified.
+- Qloo's coverage and design value for brand pop-ups are not verified.
+- The official runtime has been wired locally, and tool execution and the proposal path have been checked. Deployment, restore across processes, and compatibility with the full V1 are not verified.
+- Direct competitor research is incomplete.
+- The formal name, the product's runtime model and provider, storage, and visual style are not decided.
 
-这些未知不自动触发转向。发现问题时先报告影响与最小修正建议，涉及方向或范围变化再由用户确认。
+These unknowns do not by themselves change direction. When a problem shows up, report the effect and the smallest fix. A change of direction or scope waits for the user.
 
-开发助手配置与产品运行模型分开；前者不决定产品自身的模型与提供商。已使用某个模型完成一次验证，也不等于已确定最终产品配置。
+The assistant used for development is separate from the product's runtime model. The assistant does not decide the product's model or provider. Using a model once for a check does not set the final product configuration.

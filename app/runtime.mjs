@@ -99,17 +99,17 @@ const revisionCorrection = 'Correct the revision using the feedback path and typ
 export function offlineRevisionDecision(context, snapshot) {
   const userIndex = context.messages.findLastIndex(message => message.role === 'user');
   const results = context.messages.slice(userIndex + 1).filter(message => message.role === 'toolResult');
-  if (results.length) return [{ type: 'text', text: '演示修改稿已生成；请查看校验结果与修改前后对照。这不是模型对你文字的理解，也不是效果验证。' }];
+  if (results.length) return [{ type: 'text', text: 'The demo revision was created. Review the checks and the before/after comparison. This is not a model reading your words, and it is not proof of an effect.' }];
   const request = snapshot.revisionRequest;
   const fixtureName = request?.offlineFixture;
-  const response = { phase: 'needs_input', summary: '演示模式不能解释任意反馈；已确认内容保持不变。',
-    question: '如需体验修改流程，请在修改框下方选一份演示修改稿；理解自由文本需要使用真实研究。',
-    changes: [], impact: [], unknowns: ['未验证真实模型对本次输入的理解与设计质量。'] };
+  const response = { phase: 'needs_input', summary: 'Demo mode cannot interpret arbitrary feedback. Confirmed content stays unchanged.',
+    question: 'To try the review flow, choose a demo revision under the change box. Understanding free text requires live research.',
+    changes: [], impact: [], unknowns: ['The live model\'s reading of this input, and the design quality, are not verified.'] };
   if (fixtureName === 'conflict') Object.assign(response, { phase: 'conflict',
-    summary: '演示冲突：必须保留试穿，与删除所有产品接触相互冲突。',
-    question: '请确认是否保留原先必须保留的试穿要求；未确认前不修改正式方案。' });
-  if (fixtureName === 'needs_input') Object.assign(response, { summary: '演示澄清：参与容量会影响双人组织。',
-    question: '每轮允许同时参与多少人？未知时可以明确标为待确认。' });
+    summary: 'Demo conflict: the required try-on conflicts with removing every product contact.',
+    question: 'Confirm whether the original required try-on stays. The confirmed proposal is not changed until you do.' });
+  if (fixtureName === 'needs_input') Object.assign(response, { summary: 'Demo clarification: capacity would change a paired format.',
+    question: 'How many people can take part in one round? If unknown, mark it as still to be confirmed.' });
   if (['pair_45', 'invalid_reference'].includes(fixtureName)) {
     const target = snapshot.concepts.find(concept => concept.id === request.targetConceptId);
     const references = [];
@@ -119,15 +119,15 @@ export function offlineRevisionDecision(context, snapshot) {
         const entry = Object.entries(entity.properties ?? {}).find(([key, value]) => /^(short_|long_)?description$/.test(key) && typeof value === 'string' && value.trim());
         if (entry) references.push({ evidenceId: card.id, entityId: entity.id ?? entity.entity_id,
           observedField: `properties.${entry[0]}`, observedValue: entry[1], basis: 'description',
-          inspiration: '设计推断：实际实体描述仅作为匿名身份与穿者/记录者角色配对的创意参考；不证明尺码适配、库存、试穿时长或任何效果。' });
+          inspiration: 'Design inference: the returned description is only a creative reference for pairing an anonymous wearer and recorder. It does not prove size, stock, try-on duration, or any effect.' });
       }
     }
     if (fixtureName === 'invalid_reference') references.splice(0, references.length, { evidenceId: 'offline-intentionally-missing',
-      entityId: 'offline-missing', observedField: 'properties.description', observedValue: '这是故意无效的离线引用',
-      inspiration: '仅用于验证服务端拒绝，不是证据。' });
-    const contact = snapshot.brief.mustKeep.length ? snapshot.brief.mustKeep.join('、') : '产品试穿';
-    const sizeAllocation = '先分别确认两人各自适配尺码，每人独立分配一双；只换角色、不换鞋；库存缺码或数量不足时暂停本对试穿并披露库存冲突，不用不合脚鞋或同一双鞋替代';
-    const ownSizeTouchpoint = `真实上脚${contact}：${sizeAllocation}。`;
+      entityId: 'offline-missing', observedField: 'properties.description', observedValue: 'This offline citation is intentionally invalid',
+      inspiration: 'Used only to check that the server rejects it. This is not evidence.' });
+    const contact = snapshot.brief.mustKeep.length ? snapshot.brief.mustKeep.join(', ') : 'product try-on';
+    const sizeAllocation = 'Confirm each person\'s size separately and assign each their own pair. Swap roles, not shoes. If a size or quantity is missing, pause this pair and state the stock conflict. Do not substitute an ill-fitting shoe or the same pair';
+    const ownSizeTouchpoint = `Actual ${contact}: ${sizeAllocation}.`;
     let replacedAllocation = false;
     const productTouchpoints = target.productTouchpoints.map(item => {
       if (item.includes('每对一双') && item.includes('轮换')) {
@@ -137,31 +137,31 @@ export function offlineRevisionDecision(context, snapshot) {
       return item;
     });
     if (!replacedAllocation && !productTouchpoints.includes(ownSizeTouchpoint)) productTouchpoints.push(ownSizeTouchpoint);
-    const stockQuestion = '尺码库存前置条件：尚未核实两人的适配尺码与各自可分配双数；若缺码或数量不足，暂停本对试穿并明确披露库存冲突，请用户决定补齐、另约或取消，不宣称已经解决供货。';
+    const stockQuestion = 'Size stock is a precondition. The two fitted sizes and how many pairs can be assigned are not checked. If a size or quantity is missing, pause this pair and state the stock conflict. The user decides whether to restock, reschedule, or cancel. Do not claim supply is solved.';
     const openQuestions = target.openQuestions.map(item => item.includes('每对一双') || /尺码.*(?:库存|分布|双数)/.test(item) ? stockQuestion : item);
     if (!openQuestions.includes(stockQuestion)) openQuestions.push(stockQuestion);
-    const timeQuestion = '0–5分钟能否完成独立量码与配鞋、两段各至少15分钟试穿及35–40分钟复测能否在原定人数下执行，需以实际库存、人员与现场容量验证；45分钟是设计时间分配，不是效果证据。';
+    const timeQuestion = 'Whether 0–5 minutes is enough to measure and assign shoes, whether two blocks of at least 15 minutes plus a 35–40 minute retest fit the planned headcount, must be checked against real stock, staff, and room capacity. Forty-five minutes is a design schedule, not evidence of an effect.';
     if (!openQuestions.includes(timeQuestion)) openQuestions.push(timeQuestion);
     const proposed = {
-      mechanism: { organization: '双人匿名配对＋45分钟定时角色交换；保留原有批次人数与编号规则，只换角色、不换鞋',
-        description: `保留双向复述：穿者由记录者依原有四问追问并记录，再互相复核。0–5分钟分别量码、确认两人各自适配尺码并独立配鞋；5–20分钟A穿自己的尺码、B记录，20–35分钟B穿自己的尺码、A记录，每人各至少15分钟；35–40分钟针对个人问题用自己的尺码复测；40–45分钟共同复核与离场。库存缺码或数量不足时暂停本对试穿并披露库存冲突，不让尺码不一致的人交换同一双鞋。45分钟及各段时长属于设计时间分配，不是适配或效果证据。` },
-      journey: [{ stage: '独立量码与配鞋 · 0–5分钟', action: '保留原有匿名编号与记录规则；工作人员分别确认两人各自适配尺码，为每人准备适配的一双。若库存缺码或数量不足，暂停本对试穿、披露库存冲突，等待用户决定补齐或另约。' },
-        { stage: 'A试穿、B记录 · 5–20分钟', action: `A穿自己适配尺码的一双完成至少15分钟${contact}，沿原方案产品体验路径完成动作；B依原有四问追问并记录，A不自行填写评价。` },
-        { stage: 'B试穿、A记录 · 20–35分钟', action: `只换角色、不换鞋：B穿自己适配尺码的另一双完成至少15分钟${contact}，A依相同四问追问并记录；不得将A的鞋直接交给尺码不同的B。` },
-        { stage: '各自尺码定向复测 · 35–40分钟', action: '针对记录中的个人问题，各用自己适配尺码复测；不以另一人的鞋或反馈替代本人适配判断。' },
-        { stage: '互相复核与带走 · 40–45分钟', action: `两人按原有记录卡互相订正，保留原方案带走内容与匿名规则。${target.journey.at(-1)?.action ?? '各自带走个人记录。'}` }],
+      mechanism: { organization: 'Anonymous pair, 45-minute timed role swap. Keep the original group size and numbering. Swap roles, not shoes.',
+        description: `Keep the two-way retelling: the recorder asks the original four questions and writes them down, then they check each other. 0–5 min: measure each person's own size and assign a separate pair. 5–20 min: A wears their own size while B records. 20–35 min: B wears their own size while A records. Each try-on is at least 15 minutes. 35–40 min: retest personal questions in each person's own size. 40–45 min: check together and leave. If a size or quantity is missing, pause this pair and state the stock conflict. Do not hand one person's shoes to someone of a different size. Forty-five minutes and each block are a design schedule, not evidence of fit or effect.` },
+      journey: [{ stage: 'Measure and assign · 0–5 min', action: 'Keep the original anonymous numbers and recording rules. Staff confirm each person\'s size and prepare one fitted pair each. If a size or quantity is missing, pause this pair, state the stock conflict, and wait for the user to restock or reschedule.' },
+        { stage: 'A tries on, B records · 5–20 min', action: `A wears their own fitted pair for at least 15 minutes of ${contact} and follows the original product path. B asks the original four questions and records them. A does not fill in the review.` },
+        { stage: 'B tries on, A records · 20–35 min', action: `Swap roles, not shoes. B wears a different pair in their own size for at least 15 minutes of ${contact}. A asks the same four questions and records them. Do not hand A's shoes to B when the sizes differ.` },
+        { stage: 'Retest own size · 35–40 min', action: 'Retest the personal questions from the notes in each person\'s own size. Do not use the other person\'s shoes or notes as a substitute for fit.' },
+        { stage: 'Check together and leave · 40–45 min', action: `The pair corrects the original record card together and keeps the original takeaway and anonymity rules. ${target.journey.at(-1)?.action ?? 'Each person takes their own notes.'}` }],
       productTouchpoints, openQuestions,
     };
-    Object.assign(response, { phase: 'pending', summary: '演示修改稿：45分钟双人试穿改为各自适配尺码、独立配鞋；库存待确认，缺码则暂停。仅形成待审修改，不代表理解了任意反馈。',
+    Object.assign(response, { phase: 'pending', summary: 'Demo revision: the 45-minute paired try-on now uses each person\'s own size and a separate pair. Stock is unconfirmed; a missing size pauses the pair. This is only a pending change. It does not mean arbitrary feedback was understood.',
       changes: Object.entries(proposed).filter(([field, after]) => JSON.stringify(after) !== JSON.stringify(target[field])).map(([field, after]) => ({
         field, after, reason: ['mechanism', 'journey'].includes(field)
-          ? '离线设计设定：保留匿名双向复述，只调整45分钟时间组织与每人独立尺码配鞋；实际描述仅支持角色配对的创意推断，不证明适配或效果。'
-          : '运营设计推断：修正每对共用一双造成的尺码冲突，保留无关样块、材料垫与记录卡；独立配鞋依赖尚未核实的库存和容量。',
+          ? 'Offline design setting: keep the anonymous two-way retelling, and change only the 45-minute schedule and the separate size assignment. The returned description supports only a creative inference about role pairing. It does not prove fit or effect.'
+          : 'Operational design inference: fix the size conflict of one shared pair, and keep unrelated samples, material pads, and the record card. Separate pairs depend on stock and capacity that are not yet checked.',
         evidenceRefs: ['mechanism', 'journey'].includes(field) ? references.slice(0, 1) : [] })),
-      impact: ['仅调整独立量码配鞋、45分钟角色分段、试穿复测与相应库存/容量问题；保留标题、核心主张、历史证据、无关产品接触及带走内容。'],
-      unknowns: ['实际尺码库存与每人可分配的一双尚未核实，缺码或不足须暂停并披露冲突。',
-        '原定人数下量码、两段各15分钟试穿与复测的容量、人员及45分钟可执行性未经验证。',
-        ...(references.length ? [] : ['现有证据没有可引用的实际描述字段；本演示稿不新增描述事实。'])] });
+      impact: ['Changes only the separate sizing, the 45-minute role blocks, the retest, and the related stock and capacity questions. Title, core claim, historical evidence, unrelated product contact, and takeaway stay.'],
+      unknowns: ['Actual size stock and one pair per person are not checked. A missing size must pause the pair and state the conflict.',
+        'Measuring, two 15-minute try-on blocks, and the retest at the planned headcount, plus whether 45 minutes is workable, are not verified.',
+        ...(references.length ? [] : ['Saved evidence has no citable description field. This demo draft adds no description fact.'])] });
   }
   return [{ type: 'toolCall', id: randomUUID(), name: 'propose_concept_revision', arguments: response }];
 }
@@ -218,38 +218,38 @@ function businessDiagnostic(project, input, path) {
 }
 
 function mockConcepts(snapshot, card) {
-  const required = snapshot.brief.mustKeep.length ? snapshot.brief.mustKeep : ['产品体验'];
-  const contact = required.join('、');
+  const required = snapshot.brief.mustKeep.length ? snapshot.brief.mustKeep : ['product experience'];
+  const contact = required.join(', ');
   const entities = card?.returnedEntities ?? [];
   return [
-    { id: `${snapshot.id}:concept-a`, title: '共同节拍 · 定时入场',
-      coreClaim: '让到场者在同一时间完成一轮产品体验，共同参与而非等待观看。',
-      mechanism: { organization: 'collective_scheduled', description: '小组按固定时段开始，由共同节拍组织动作任务；工作人员引导轮换和产品反馈。' },
-      journey: [{ stage: '为什么来', action: '预约一场同伴共同参与的动作体验。' },
-        { stage: '进来做什么', action: '按时段组队，通过共同节奏完成现场动作任务。' },
-        { stage: '如何接触产品', action: `在动作任务中安排${contact}，现场记录感受。` },
-        { stage: '带走什么', action: '带走个人体验笔记和本场共同完成的节奏记录。' }],
-      productTouchpoints: [`${contact}：由工作人员协助体验并收集舒适度描述。`],
+    { id: `${snapshot.id}:concept-a`, title: 'Shared beat · scheduled entry',
+      coreClaim: 'People complete one product experience at the same time. They take part together instead of waiting to watch.',
+      mechanism: { organization: 'collective_scheduled', description: 'A small group starts on a fixed slot. A shared beat organizes the movement tasks. Staff guide the rotation and the product notes.' },
+      journey: [{ stage: 'Why come', action: 'Book a movement session that companions do together.' },
+        { stage: 'What you do inside', action: 'Join a timed group and finish the movement tasks on a shared beat.' },
+        { stage: 'How you meet the product', action: `The movement tasks include ${contact}. People write down how it feels on site.` },
+        { stage: 'What you take away', action: 'A personal note and the shared beat record from this session.' }],
+      productTouchpoints: [`${contact}: staff help with the experience and collect a description of comfort.`],
       evidenceLinks: entities[0] ? [{ evidenceId: card.id, entityId: entities[0].id,
         observedField: 'properties.participation', observedValue: entities[0].properties.participation,
-        observation: `合成数据显示参与方式为 ${entities[0].properties.participation}；不是真实受众事实。`,
-        inspiration: '由共同节奏信号推导为定时、小组同步的参与组织；这是设计推断。' }] : [],
-      openQuestions: ['时段容量、声音使用授权与工作人员配置尚待确认。'],
-      unverifiedEffects: ['到场意愿、参与度和转化均未验证；不作效果预测。'] },
-    { id: `${snapshot.id}:concept-b`, title: '个人片段 · 自主探索',
-      coreClaim: '到场者按自己的节奏推进故事任务，用产品体验决定下一段叙事。',
-      mechanism: { organization: 'individual_self_paced', description: '个人任选叙事起点，自主完成分散任务；无需等待统一开场，用产品反馈解锁下一段内容。' },
-      journey: [{ stage: '为什么来', action: '选择一个个人叙事起点，探索自己的日常片段。' },
-        { stage: '进来做什么', action: '自行选择任务顺序，并按个人节奏穿行各站。' },
-        { stage: '如何接触产品', action: `完成${contact}后记录个人感受，用反馈推进故事。` },
-        { stage: '带走什么', action: '带走自己的故事卡和产品体验记录。' }],
-      productTouchpoints: [`${contact}：每一站设置一项可以自主完成的产品体验。`],
+        observation: `Synthetic data shows participation as ${entities[0].properties.participation}. This is not a real audience fact.`,
+        inspiration: 'The shared-rhythm signal is translated into a timed, group-synchronized format. This is a design inference.' }] : [],
+      openQuestions: ['Slot capacity, sound rights, and staffing are still unconfirmed.'],
+      unverifiedEffects: ['Willingness to show up, participation, and conversion are unverified. This is not an effect prediction.'] },
+    { id: `${snapshot.id}:concept-b`, title: 'Personal fragment · self-paced',
+      coreClaim: 'Each visitor moves a story task at their own pace. The product experience decides the next chapter.',
+      mechanism: { organization: 'individual_self_paced', description: 'A person picks a story start and finishes scattered tasks alone. There is no shared opening. Product notes unlock the next chapter.' },
+      journey: [{ stage: 'Why come', action: 'Choose a personal story start and explore one everyday fragment.' },
+        { stage: 'What you do inside', action: 'Choose the task order and move through the stations at your own pace.' },
+        { stage: 'How you meet the product', action: `After ${contact}, write a personal note. That note advances the story.` },
+        { stage: 'What you take away', action: 'Your own story card and the product-experience note.' }],
+      productTouchpoints: [`${contact}: each station has one product experience a person can finish alone.`],
       evidenceLinks: entities[1] ? [{ evidenceId: card.id, entityId: entities[1].id,
         observedField: 'properties.participation', observedValue: entities[1].properties.participation,
-        observation: `合成数据显示参与方式为 ${entities[1].properties.participation}；不是真实受众事实。`,
-        inspiration: '由自主叙事信号推导为个人选择顺序、产品反馈推进的机制；这是设计推断。' }] : [],
-      openQuestions: ['内容版权、无障碍任务与各站空间条件尚待确认。'],
-      unverifiedEffects: ['自主探索是否提升停留或品牌理解尚待用户研究。'] },
+        observation: `Synthetic data shows participation as ${entities[1].properties.participation}. This is not a real audience fact.`,
+        inspiration: 'The self-directed story signal is translated into a personal order, advanced by product notes. This is a design inference.' }] : [],
+      openQuestions: ['Content rights, accessible tasks, and the space at each station are still unconfirmed.'],
+      unverifiedEffects: ['Whether self-paced exploration increases dwell time or brand understanding still needs user research.'] },
   ];
 }
 
@@ -264,28 +264,28 @@ export function offlineDecision(context, snapshot) {
   const parsed = results.map(m => { try { return { name: m.toolName, value: JSON.parse(toolText(m)) }; } catch { return { name: m.toolName, value: { status: 'error' } }; } });
   const proposalResult = parsed.find(r => r.name === 'propose_design_response');
   if (proposalResult) return [{ type: 'text', text: proposalResult.value.accepted
-    ? '已更新离线演示提案板。所有文化返回均为虚构的合成数据；设计与效果仍需真实验证。'
-    : '提案未通过项目约束校验，未应用修改。' }];
+    ? 'The offline demo board was updated. Every cultural return is fictional synthetic data. The design and its effects still need a real check.'
+    : 'The proposal failed the project constraints. No change was applied.' }];
   const proposal = { baseVersion: snapshot.version,
     phase: 'needs_input', summary: '', questions: [], concepts: [] };
-  const reuse = /已有证据|复用|不要.*查询|不再.*查/.test(userText);
-  const queryAgain = /重新查询|重新研究|重跑|再查|更新.*证据/.test(userText) && !reuse;
+  const reuse = /已有证据|复用|不要.*查询|不再.*查|reuse|do not query|don't query|stop researching/i.test(userText);
+  const queryAgain = /重新查询|重新研究|重跑|再查|更新.*证据|query again|research again/i.test(userText) && !reuse;
   if (reuse) {
     const existing = snapshot.evidence.find(e => e.relevant === true && e.returnedEntities.length === 2);
     proposal.phase = existing ? 'ready' : 'insufficient_evidence';
-    proposal.summary = existing ? '按要求复用本项目已有离线合成证据；本轮没有追加查询。'
-      : '按要求停止追加查询。现有证据不足，暂停概念生成，不补造研究依据。';
+    proposal.summary = existing ? 'Reused this project\'s saved offline synthetic evidence, as requested. This round did not add a query.'
+      : 'Stopped further queries, as requested. Saved evidence is not enough, so concept generation pauses. Research is not invented.';
     proposal.concepts = existing ? mockConcepts(snapshot, existing) : [];
   } else if (snapshot.concepts.length && !queryAgain) {
     proposal.phase = 'insufficient_evidence';
-    proposal.summary = '离线模拟无法理解任意反馈或完成真实语义修改；保留现有讨论草案，本轮未追加查询。需另行验证真实模型与后续修改流程。';
+    proposal.summary = 'Offline simulation cannot understand arbitrary feedback or make a real semantic edit. The current discussion draft stays. This round added no query. A live model and the later revision flow still need a separate check.';
     proposal.concepts = snapshot.concepts;
   } else if (!snapshot.brief.venue) {
-    proposal.summary = '场地影响参与容量和组织方式，先补充这一项再研究。';
-    proposal.questions = [{ field: 'venue', text: '活动在哪个城市、室内还是室外，大约有多少可用空间？未知项可以明确说明。' }];
+    proposal.summary = 'The venue changes capacity and how people are organized. Add that before research.';
+    proposal.questions = [{ field: 'venue', text: 'Which city is this in, indoors or outdoors, and about how much space is available? Unknowns can be stated as unknown.' }];
   } else if (!snapshot.brief.references.length) {
-    proposal.summary = '尚无可用文化研究信号，先确认参考，避免把品牌名称当作受众画像。';
-    proposal.questions = [{ field: 'references', text: '有哪些客户确认的音乐、电影或文化参考？这些只作为待研究信号。' }];
+    proposal.summary = 'There is no cultural research signal yet. Confirm references before treating a brand name as an audience profile.';
+    proposal.questions = [{ field: 'references', text: 'Which music, film, or cultural references did the client confirm? These are only signals to research.' }];
   } else {
     const query = parsed.find(r => r.name === 'qloo_recommend');
     if (!query) return [{ type: 'toolCall', id: randomUUID(), name: 'qloo_recommend',
@@ -293,8 +293,8 @@ export function offlineDecision(context, snapshot) {
     const card = query.value.artEvidence && { ...query.value.artEvidence, returnedEntities: query.value.results ?? [] };
     const useful = card && card.relevant && card.returnedEntities.length === 2;
     proposal.phase = useful ? 'ready' : 'insufficient_evidence';
-    proposal.summary = useful ? '离线合成证据已回到官方会话，并转译为两个参与机制；尚未完成真实数据验收。'
-      : '证据不足：查询失败或返回与设计问题无关。下列仅为无证据支持的讨论草案；应补充或调整研究。';
+    proposal.summary = useful ? 'Offline synthetic evidence returned to the official session and was translated into two ways of participating. Live data has not been checked.'
+      : 'Not enough evidence: the query failed or the result does not address the design question. The drafts below have no supporting evidence. Research should be added or changed.';
     proposal.concepts = mockConcepts(snapshot, useful ? card : null);
   }
   return [{ type: 'toolCall', id: randomUUID(), name: 'propose_design_response', arguments: proposal }];

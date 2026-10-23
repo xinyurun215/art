@@ -72,12 +72,12 @@ test('explicit offline pair fixture uses official tool executor, authoritative d
     assert.deepEqual(after.productTouchpoints.slice(1), before[0].productTouchpoints.slice(1));
     assert(after.productTouchpoints[0].startsWith('真实上脚试穿新日常鞋款（'));
     assert(after.openQuestions.includes(before[0].openQuestions[1])); assert(after.openQuestions.includes(before[0].openQuestions[2]));
-    assert.deepEqual(after.journey.map(step => step.stage.match(/\d+–\d+分钟/)?.[0]), ['0–5分钟', '5–20分钟', '20–35分钟', '35–40分钟', '40–45分钟']);
+    assert.deepEqual(after.journey.map(step => step.stage.match(/\d+–\d+ min/)?.[0]), ['0–5 min', '5–20 min', '20–35 min', '35–40 min', '40–45 min']);
     const allText = JSON.stringify(after);
-    assert.match(allText, /各自.*尺码/); assert.match(allText, /至少15分钟/); assert.match(allText, /只换角色.*不换鞋/);
-    assert.match(allText, /库存.*不足.*暂停/); assert.match(allText, /设计时间分配.*效果/);
+    assert.match(allText, /own size/); assert.match(allText, /at least 15 minutes/); assert.match(allText, /Swap roles, not shoes/);
+    assert.match(allText, /missing, pause/); assert.match(allText, /design schedule, not evidence of fit or effect/);
     assert.equal(after.productTouchpoints.some(item => item.includes('每对一双轮换')), false);
-    assert(refs.every(ref => !ref.inspiration.includes('文化数据证明尺码') && ref.inspiration.includes('不证明尺码')));
+    assert(refs.every(ref => !ref.inspiration.includes('cultural data proves size') && ref.inspiration.includes('does not prove size')));
   } finally { await runtime.dispose(); }
 });
 
@@ -90,7 +90,7 @@ test('default offline arbitrary feedback pauses honestly; explicit clarification
       await runtime.submit(project.revisionRequest.text);
       assert.deepEqual(project.concepts, before); assert.equal(project.version, 1); assert.equal(project.revisions.length, 0);
       assert.equal(project.revisionRequest.status, offlineFixture === 'conflict' ? 'conflict' : offlineFixture === 'invalid_reference' ? 'error' : 'needs_input');
-      if (!offlineFixture) assert.match(project.status.detail, /不能解释任意反馈/);
+      if (!offlineFixture) assert.match(project.status.detail, /cannot interpret arbitrary feedback/);
       if (offlineFixture === 'invalid_reference') assert.equal(project.runtime.feedback.code, 'EVIDENCE_REFERENCE_INVALID');
     } finally { await runtime.dispose(); }
   }
