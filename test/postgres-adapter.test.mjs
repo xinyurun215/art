@@ -11,6 +11,91 @@ import { createProject } from '../app/state.mjs';
 import { bindDatabaseBudget, budgetedFetch, remainingBudget, validationRun, withHttpBudget } from '../app/transport.mjs';
 import { unresolvedResearch } from '../app/context.mjs';
 
+test('public judge domain creates and restores isolated guest projects through the real runtime with fake model HTTP', async t => {
+  const configured = { ...env, VERCEL_ENV: 'production', ART_ENABLE_LIVE: 'true', ART_MODEL_PROVIDER: 'deepseek',
+    ART_MODEL_ID: 'deepseek-flash', ART_MODEL_API: 'openai-completions', ART_MODEL_BASE_URL: 'https://api.deepseek.com',
+    QLOO_API_URL: 'https://hackathon.api.qloo.com' };
+  const records = new Map();
+  const historical = createProject({ brief }); records.set(historical.id, structuredClone(historical));
+  const usage = { modelHttpAttempts: 0, qlooHttpAttempts: 0 };
+  const store = { limits: { modelHttpAttempts: 6, qlooHttpAttempts: 6 }, sharedLimits: { modelHttpAttempts: 12, qlooHttpAttempts: 12 },
+    async get(id) { return structuredClone(records.get(id)); },
+    async save(project, { start = false } = {}) {
+      const next = structuredClone(project); next.storageVersion = (next.storageVersion ?? 0) + 1;
+      if (start) (next.runtime.runs ??= []).push({ id: 'private-lease', status: 'running', startedAt: new Date().toISOString() });
+      records.set(next.id, structuredClone(next));
+      return start ? { project: next, token: 'private-lease', usage } : next;
+    },
+    async reserve(project, token, detail) {
+      assert.equal(token, 'private-lease'); assert.equal(detail.kind, 'model');
+      project.usage.modelHttpAttempts++; usage.modelHttpAttempts++;
+      return { project: structuredClone(project), usage };
+    }, async finishAttempt() {} };
+  const previousFetch = globalThis.fetch;
+  let sends = 0;
+  globalThis.fetch = budgetedFetch(async (url, options) => {
+    assert.equal(new URL(String(url)).origin, configured.ART_MODEL_BASE_URL);
+    assert.equal(JSON.parse(options.body).model, configured.ART_MODEL_ID); sends++;
+    const chunk = (delta, finish_reason = null) => `data: ${JSON.stringify({ id: 'synthetic-guest', object: 'chat.completion.chunk',
+      created: 0, model: 'deepseek-flash', choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
+    return new Response(chunk({ role: 'assistant', content: '合成访客响应，未调用真实服务。' }) + chunk({}, 'stop') + 'data: [DONE]\n\n',
+      { headers: { 'content-type': 'text/event-stream' } });
+  });
+  Object.assign(validationRun, { liveStopped: false, queryStopped: false }); delete validationRun.failure;
+  t.after(() => { globalThis.fetch = previousFetch; });
+  const first = await serve(t, createFunctionHandler({ env: configured, store }));
+  const second = await serve(t, createFunctionHandler({ env: configured, store }));
+  const headers = { host: 'art-lovat-two.vercel.app' };
+  for (const path of ['/', '/index.html', '/api/config']) {
+    const result = await first('GET', path, null, null, headers);
+    assert.equal(result.status, 200); assert.equal(result.headers['www-authenticate'], undefined);
+    for (const secret of [configured.ART_PREVIEW_ACCESS_KEY, configured.ART_MODEL_API_KEY, configured.QLOO_API_KEY])
+      assert.equal(result.text.includes(secret), false);
+  }
+  const config = await first('GET', '/api/config', null, null, headers);
+  assert.equal(config.body.modes.live.available, true);
+  assert.equal((await first('GET', '/api/config', null, null, { host: 'art-other.vercel.app' })).status, 401);
+  for (const change of [{ Origin: 'https://other.invalid' }, { Origin: 'http://art-lovat-two.vercel.app' }, { 'Content-Type': 'text/plain' }])
+    assert.equal((await first('POST', '/api/projects', { brief, mode: 'live' }, null, { ...headers, ...change })).status, 403);
+  assert.equal((await first('POST', '/api/projects', { brief: { request: 'x'.repeat(33000) } }, null, headers)).status, 400);
+  const created = await first('POST', '/api/projects', { brief, mode: 'live', guestOwner: 'attacker' }, null, headers);
+  assert.equal(created.status, 200); assert.equal(created.body.project.mode, 'live'); assert.equal(sends, 1);
+  const cookie = created.headers['set-cookie'][0];
+  assert.match(cookie, /^__Host-art-guest=[a-f0-9]{64}; Path=\/; Secure; HttpOnly; SameSite=Lax;/);
+  const ownHeaders = { ...headers, Cookie: cookie.split(';')[0] };
+  const id = created.body.project.id, owner = records.get(id).guestOwner;
+  assert.equal(created.text.includes(owner), false); assert.equal(created.body.project.guestOwner, undefined);
+  assert.equal(created.text.includes('private-lease'), false); assert.equal(created.body.project.usage.qlooHttpAttempts, 0);
+  assert.deepEqual((await second('GET', `/api/projects/${id}`, null, null, ownHeaders)).body.project, created.body.project);
+  const other = await second('POST', '/api/projects', { brief, mode: 'live' }, null, headers);
+  assert.equal(other.status, 200); assert.equal(sends, 2);
+  const otherHeaders = { ...headers, Cookie: other.headers['set-cookie'][0].split(';')[0] };
+  for (const deniedHeaders of [headers, otherHeaders, { ...headers, Cookie: '__Host-art-guest=invalid' }]) {
+    for (const path of [`/api/projects/${id}`, `/api/projects/${historical.id}`]) {
+      assert.equal((await second('GET', path, null, null, deniedHeaders)).status, 404);
+      for (const suffix of ['messages', 'select', 'revisions', 'revisions/unknown/accept', 'revisions/unknown/reject', 'revisions/unknown/feedback'])
+        assert.equal((await second('POST', `${path}/${suffix}`, { text: '不允许修改' }, null, deniedHeaders)).status, 404);
+    }
+  }
+  assert.equal((await second('GET', `/api/projects/${historical.id}`, null, null, ownHeaders)).status, 404);
+  assert.equal((await second('GET', '/api/projects', null, null, ownHeaders)).status, 404);
+  const continued = await second('POST', `/api/projects/${id}/messages`, { text: '合成补充' }, null, ownHeaders);
+  assert.equal(continued.status, 200); assert.equal(sends, 3); assert.equal(records.get(id).guestOwner, owner);
+  assert.deepEqual(records.get(historical.id), historical);
+});
+
+test('guest SQL reads reject missing or foreign ownership before recovering an expired historical lease', async () => {
+  const statements = [];
+  const store = createPostgresStore({ pool: { async connect() { return { release() {}, async query(sql) {
+    statements.push(sql);
+    return { rows: sql.startsWith('SELECT * FROM art_budget_runs') ? [{ limits: store.limits, shared_limits: store.sharedLimits }]
+      : sql.startsWith('SELECT * FROM art_projects') ? [{ run_id: 'protected-preview-v1', state: { runtime: {} }, lease_token: 'expired', lease_until: '2000-01-01' }] : [] };
+  } }; } } });
+  assert.equal(await store.get('historical', { guestOwner: null }), null); assert.equal(statements.length, 0);
+  assert.equal(await store.get('historical', { guestOwner: 'foreign' }), null);
+  assert.equal(statements.some(sql => /^UPDATE|art_http_attempts/.test(sql)), false);
+});
+
 const connectionString = process.env.ART_TEST_DATABASE_URL;
 const sqlTest = (name, run) => test(name, { skip: !connectionString && 'Set ART_TEST_DATABASE_URL to an isolated real Postgres database' }, run);
 const brief = { request: '虚构运动鞋快闪，离线数据库验收', venue: '上海室内150平方米', references: ['虚构音乐参考'], mustKeep: ['试穿'] };

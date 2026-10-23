@@ -69,10 +69,12 @@ export function createPostgresStore({ connectionString, pool = new pg.Pool({ con
       Boolean(project.runtime.queryStopped || project.runtime.failure?.kind === 'qloo' || project.runtime.localFailure?.kind === 'qloo')]);
   }
   return { limits, sharedLimits,
-    async get(id) {
+    async get(id, { guestOwner } = {}) {
+      if (guestOwner === null) return null;
       return transaction(async (client, run) => {
         const row = await rowFor(client, id);
         if (!row) return null;
+        if (guestOwner !== undefined && row.state.guestOwner !== guestOwner) return null;
         const attempts = (await client.query('SELECT detail FROM art_http_attempts WHERE project_id=$1 AND run_id=$2', [id, runId])).rows;
         const confirmed = new Map(attempts.map(({ detail }) => [detail.id, detail]));
         if (row.state.runtime.httpAttempts) row.state.runtime.httpAttempts = row.state.runtime.httpAttempts.map(attempt => confirmed.get(attempt.id) ?? attempt);

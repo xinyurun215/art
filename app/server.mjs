@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual, randomBytes, createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -18,6 +18,7 @@ let databaseExecutionActive = false;
 
 function publicProject(project) {
   const safe = structuredClone(project);
+  delete safe.guestOwner;
   safe.runtime = Object.fromEntries(['sessionId', 'toolNames', 'modelResultReads', 'feedback', 'failure', 'localFailure',
     'queryStopped', 'totalLatencyMs', 'generationBudget', 'httpAttempts'].filter(key => Object.hasOwn(project.runtime, key))
     .map(key => [key, structuredClone(project.runtime[key])]));
@@ -184,16 +185,22 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
       try { await entry?.runtime.dispose(); } catch { /* A failed save must not stop later queue entries or shutdown. */ }
     });
   }
-  const loadProject = async id => store ? store.get(id) : projects.get(id);
+  const loadProject = async (id, guestOwner) => {
+    const project = store ? await store.get(id, { guestOwner }) : projects.get(id);
+    return guestOwner === undefined || (guestOwner && project?.guestOwner === guestOwner) ? project : null;
+  };
   const handler = async (request, response) => {
     try {
+      const judge = functionMode && env.VERCEL_ENV === 'production' && request.headers.host === 'art-lovat-two.vercel.app';
+      let guestToken = /(?:^|;\s*)__Host-art-guest=([a-f0-9]{64})(?:;|$)/.exec(request.headers.cookie ?? '')?.[1];
+      const owner = () => judge ? (guestToken ? createHash('sha256').update(guestToken).digest('hex') : null) : undefined;
       if (closing) return json(response, 503, { error: '服务正在关闭，未接受新的任务。' });
       if (functionMode) {
         if (!['preview', 'production'].includes(env.VERCEL_ENV) || !store || !env.ART_PREVIEW_ACCESS_KEY)
           return json(response, 503, { error: '仅允许配置数据库和访问密钥的预览或生产环境。', code: 'PREVIEW_CONFIGURATION_REQUIRED' });
         const supplied = Buffer.from(String(request.headers.authorization ?? ''));
         const expected = Buffer.from(`Basic ${Buffer.from(`preview:${env.ART_PREVIEW_ACCESS_KEY}`).toString('base64')}`);
-        if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+        if (!judge && (supplied.length !== expected.length || !timingSafeEqual(supplied, expected))) {
           response.setHeader('WWW-Authenticate', 'Basic realm="Art protected preview", charset="UTF-8"');
           return json(response, 401, { error: '需要预览访问凭据。', code: 'PREVIEW_AUTHENTICATION_REQUIRED' });
         }
@@ -216,19 +223,27 @@ export function createAppServer({ env = process.env, dataDir = resolve(publicRoo
         if (input.mode === 'live' && !configStatus(env).modes.live.available)
           return json(response, 409, { error: '真实模式未单独启用或缺少明确配置；离线演示无需密钥。' });
         const project = createProject(input);
+        if (judge) {
+          if (!guestToken) {
+            guestToken = randomBytes(32).toString('hex');
+            response.setHeader('Set-Cookie', `__Host-art-guest=${guestToken}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+          }
+          project.guestOwner = owner();
+        }
         httpBudget.bind(project, true);
         const saved = await schedule(project, project.brief.request);
         return json(response, store ? 200 : 202, { project: store ? publicProject(saved) : project });
       }
       const match = /^\/api\/projects\/([^/]+)(?:\/(messages|select|revisions)(?:\/([^/]+)\/(accept|reject|feedback))?)?$/.exec(url.pathname);
       if (match) {
-        let project = await loadProject(match[1]);
+        let project = await loadProject(match[1], owner());
         if (!project) return json(response, 404, { error: '项目不存在；请检查当前本地项目存储。' });
         if (request.method === 'GET' && !match[2]) return json(response, 200, { project: store ? publicProject(project) : project });
         if (request.method === 'POST' && match[2]) {
           const input = await body(request);
           if (closing) return json(response, 503, { error: '服务正在关闭，未接受新的任务。' });
-          project = await loadProject(match[1]);
+          project = await loadProject(match[1], owner());
+          if (!project) return json(response, 404, { error: '项目不存在；请检查当前浏览器的项目。' });
           if (project.status.phase === 'busy') return json(response, 409, { error: '当前任务仍在处理，请稍后补充。', code: 'PROJECT_BUSY' });
           project = structuredClone(project);
           if (match[2] === 'select' && !match[3]) {
