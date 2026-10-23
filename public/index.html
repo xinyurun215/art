@@ -11,22 +11,9 @@
 <body>
   <a class="skip-link" href="#proposal-board">跳到提案板</a>
   <header class="app-header">
-    <a class="wordmark" href="/" aria-label="Art 创意提案工作台首页"><span class="art-word">Art<span class="art-period">.</span></span><span class="wordmark-divider" aria-hidden="true">/</span><span>创意提案工作台<small>品牌快闪体验设计</small></span></a>
-    <div class="header-status"><span class="status-dot" aria-hidden="true"></span><span id="header-mode">本地工作空间</span></div>
+    <a class="wordmark" href="/" aria-label="Art 创意提案工作台首页"><span class="art-word">Art<span class="art-period">.</span></span><span class="wordmark-divider" aria-hidden="true"></span><span>创意提案工作台<small>品牌快闪体验设计</small></span></a>
+    <div class="header-status" role="status"><span class="status-dot" aria-hidden="true"></span><span id="test-label">正在连接…</span></div>
   </header>
-
-  <section class="test-banner" aria-labelledby="test-label">
-    <div class="test-banner-copy"><span class="banner-label" id="test-label">离线合成验收</span><span id="mode-explanation">模拟模型与夹具；不是真实 Qloo 查询，不构成客户或效果证据。</span></div>
-    <details class="runtime-settings" id="runtime-settings">
-      <summary>运行设置与说明</summary>
-      <div class="settings-body"><div class="test-controls">
-      <label for="mode">新项目方式</label>
-      <select id="mode" aria-describedby="config-status"><option value="offline">模拟模型与夹具</option><option value="live" disabled>真实服务 · 未配置</option></select>
-      <label for="scenario">验收场景</label>
-      <select id="scenario"><option value="sufficient">证据充分</option><option value="failure">查询失败</option><option value="irrelevant">结果无关</option></select>
-      </div><p class="config-status" id="config-status" role="status">正在读取服务配置…</p></div>
-    </details>
-  </section>
   <div id="connection-error" class="connection-error" role="alert" hidden></div>
 
   <main class="workspace">
@@ -36,7 +23,7 @@
         <summary><span class="rail-add" aria-hidden="true">＋</span><span><strong id="brief-heading">从一份需求开始</strong><small>新建独立项目</small></span></summary>
         <div class="brief-disclosure-body">
         <p class="section-description">先写已知的。影响下一步的缺口，智能体会继续追问。</p>
-        <div class="demo-controls"><span>合成案例</span><button type="button" class="text-button" id="load-demo">完整示例</button><span class="demo-separator" aria-hidden="true">/</span><button type="button" class="text-button" id="load-ambiguous">待澄清示例</button></div>
+        <div class="demo-controls"><span>填入示例</span><button type="button" class="chip-button" id="load-demo">完整需求</button><button type="button" class="chip-button" id="load-ambiguous">待澄清需求</button></div>
         <form id="brief-form">
           <label class="field-label" for="request">想做什么 <span>必填</span></label>
           <textarea id="request" name="request" rows="5" required placeholder="例如：为一个新运动鞋系列设计品牌快闪，让来访者通过试穿理解产品。还有哪些条件没定，也可以直接写。"></textarea>
@@ -52,6 +39,7 @@
               <div class="full"><label class="field-label" for="avoid">禁止 / 避免</label><input id="avoid" name="avoid" placeholder="例如：现场表演、强制注册"></div>
             </div>
           </details>
+          <div class="mode-field"><label class="field-label" for="mode">研究方式</label><select id="mode"><option value="offline">演示 · 合成数据</option><option value="live" disabled>真实研究 · 未就绪</option></select></div>
           <button class="primary-button" id="create-project" type="submit"><span>开始研究</span><span aria-hidden="true">↗</span></button>
           <p class="form-note" id="create-note">输入会作为客户提供信息保留，未经独立核实。</p>
         </form>
@@ -60,30 +48,31 @@
 
       <section class="rail-section conversation-section" aria-labelledby="conversation-heading">
         <div class="section-heading"><h2 id="conversation-heading">项目对话</h2><span class="eyebrow" id="session-label">尚未开始</span></div>
-        <p class="section-description">补充条件，讨论选择。成果保留在右侧提案板。</p>
         <div class="conversation-log" id="messages" role="log" aria-label="项目对话" aria-live="polite"><p class="empty-chat">补充条件、回答追问，都在同一个项目里继续。</p></div>
         <form id="message-form">
           <label class="sr-only" for="message">回复智能体</label>
-          <textarea id="message" rows="2" placeholder="先开始一份项目，再继续对话" disabled></textarea>
-          <button class="send-button" id="send-message" type="submit" disabled>发送回复 <span aria-hidden="true">↑</span></button>
+          <div class="composer">
+            <textarea id="message" rows="2" placeholder="先开始一份项目，再继续对话" disabled></textarea>
+            <button class="send-button" id="send-message" type="submit" disabled><span class="sr-only">发送回复</span><span aria-hidden="true">↑</span></button>
+          </div>
         </form>
         <details class="activity-details" id="activity-details"><summary>行动记录 <span id="action-count">0</span></summary><ol class="action-list" id="actions"><li class="empty-activity">开始后显示查询与决策记录。</li></ol></details>
       </section>
     </aside>
 
     <section class="proposal-board" id="proposal-board" aria-labelledby="board-heading" tabindex="-1">
-      <div class="board-heading-row"><div><p class="eyebrow">PROJECT / 当前项目 · 早期体验提案</p><h2 id="board-heading">下一场体验，从这里展开。</h2><p class="board-subtitle" id="board-subtitle">把需求、文化依据和设计选择，放在同一张提案板上。</p></div><div><div class="version-stamp" id="version-stamp">待建立项目</div><button type="button" class="export-button" id="export-proposal" hidden>导出提案包 · Markdown</button></div></div>
+      <div class="board-heading-row"><div><p class="eyebrow">早期体验提案</p><h2 id="board-heading">下一场体验，从这里展开。</h2><p class="board-subtitle" id="board-subtitle">把需求、文化依据和设计选择，放在同一张提案板上。</p><p class="mode-note" id="mode-explanation"></p></div><div class="board-tools"><div class="version-stamp" id="version-stamp">待建立项目</div><button type="button" class="export-button" id="export-proposal" hidden><span aria-hidden="true">↓</span>导出提案</button></div></div>
       <div class="project-status" id="project-status" role="status" aria-live="polite"><div class="status-overview"><span class="phase-mark" aria-hidden="true"></span><div class="status-copy"><strong>工作台已就绪</strong><p>写下需求，研究证据与两个不同的参与机制会出现在这里。</p></div></div></div>
       <div id="project-context"></div>
       <section id="questions-panel" class="questions-panel" aria-labelledby="questions-heading" hidden></section>
 
       <section class="concept-section" aria-labelledby="concept-heading">
-        <div class="board-section-heading"><div><p class="eyebrow">CONCEPTS / 方案比较</p><h3 id="concept-heading">同一份需求，两种可能。</h3></div><span class="quiet-label" id="concept-selection-label">先比较参与机制，再选择方向</span></div>
+        <div class="board-section-heading"><div><p class="eyebrow">方案比较</p><h3 id="concept-heading">同一份需求，两种可能。</h3></div><span class="quiet-label" id="concept-selection-label">先比较参与机制，再选择方向</span></div>
         <div class="concept-grid" id="concepts"><article class="concept-placeholder"><span class="concept-letter">A</span><h4>一个共同发生的时刻</h4><p>生成后，查看到场理由、参与机制与完整体验旅程。</p><div class="placeholder-rule"></div><span>等待研究结果</span></article><article class="concept-placeholder"><span class="concept-letter">B</span><h4>另一种接触产品的方法</h4><p>两个概念的区别应体现在参与和产品互动方式。</p><div class="placeholder-rule"></div><span>等待研究结果</span></article></div>
       </section>
 
       <section class="revision-section" id="revision-workspace" aria-labelledby="revision-heading" hidden>
-        <div class="board-section-heading"><div><p class="eyebrow">保留确认内容 · 逐次审查</p><h3 id="revision-heading">继续这个概念</h3></div><span class="section-count" id="confirmed-version"></span></div>
+        <div class="board-section-heading"><div><p class="eyebrow">修改与审查</p><h3 id="revision-heading">继续这个概念</h3></div><span class="section-count" id="confirmed-version"></span></div>
         <p class="revision-selection" id="revision-selection"></p>
         <div class="lock-panel" id="lock-panel" hidden></div>
         <form id="revision-form">
@@ -91,9 +80,9 @@
           <textarea id="revision-text" rows="3" aria-describedby="revision-note" placeholder="说明希望调整的内容、原因，以及需要保留的部分。"></textarea>
           <p class="form-note" id="revision-note">修改会先成为待审提案。只有你明确接受，才会写入已确认版本。</p>
           <div class="offline-revision-controls" id="offline-revision-controls" hidden>
-            <label class="field-label" for="offline-revision-fixture">离线测试回应</label>
-            <select id="offline-revision-fixture"><option value="">不使用固定提案 · 任意反馈会明确暂停</option><option value="pair_45">45 分钟双人试穿 · 固定测试提案</option><option value="needs_input">关键条件待澄清 · 测试夹具</option><option value="conflict">限制冲突 · 测试夹具</option><option value="invalid_reference">无效证据拒绝 · 测试夹具</option></select>
-            <p class="form-note" id="offline-revision-note">离线模式不理解任意反馈；固定回应只用于检查修改、批准与恢复流程。</p>
+            <label class="field-label" for="offline-revision-fixture">演示修改稿</label>
+            <select id="offline-revision-fixture"><option value="pair_45">改为双人 45 分钟试穿</option><option value="needs_input">需要先确认一个条件</option><option value="conflict">与已有限制冲突</option><option value="">不用预设</option></select>
+            <p class="form-note" id="offline-revision-note">演示模式不理解自由文本；预设修改稿只用来展示审查流程。</p>
           </div>
           <button class="primary-button revision-submit" id="submit-revision" type="submit"><span>提出修改</span><span aria-hidden="true">↗</span></button>
         </form>
@@ -104,7 +93,7 @@
 
       <section class="evidence-section" aria-labelledby="evidence-heading">
         <div class="board-section-heading"><div><p class="eyebrow">研究依据</p><h3 id="evidence-heading">文化证据</h3></div><span class="section-count" id="evidence-count">尚无查询</span></div>
-        <div class="evidence-list" id="evidence"><div class="empty-evidence"><span class="empty-symbol" aria-hidden="true">↳</span><div><strong>先确认输入，再检查返回了什么</strong><p>每张卡保留查询背景、实际字段与来源。关联只能启发设计，不能预测效果。</p></div></div></div>
+        <div class="evidence-list" id="evidence"><div class="empty-evidence"><span class="empty-symbol" aria-hidden="true">↳</span><div><strong>先确认输入，再检查返回了什么</strong><p>每条证据保留查询问题、返回内容与来源。关联只能启发设计，不能预测效果。</p></div></div></div>
       </section>
       <footer class="board-footer"><span>早期提案，可讨论、可追溯。</span><span>场地安全、版权、报价与实际效果需另行核实。</span></footer>
     </section>

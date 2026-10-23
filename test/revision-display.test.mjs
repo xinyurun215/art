@@ -38,14 +38,11 @@ test('history exposes complete impact and unknowns as separate readable lists be
   assert.equal(JSON.stringify(project), before, 'rendering must not mutate saved data');
 });
 
-test('complete raw revision is retained in its own closed disclosure inside the history entry', () => {
+test('history keeps readable comparisons without exposing raw records or identifiers', () => {
   context.renderRevision(project);
   const html = elements.get('revision-records').innerHTML;
-  const raw = html.match(/<details\b([^>]*)><summary>查看完整修订记录（原始 JSON）<\/summary><pre class="raw-record">([\s\S]*?)<\/pre><\/details>/);
-  assert.ok(raw, 'opening the history comparison must not automatically expose raw JSON');
-  assert.doesNotMatch(raw[1], /\bopen(?:\s|=|$)/);
-  assert.match(raw[1], /data-key="history-raw-/);
-  assert.equal(raw[2], escape(JSON.stringify(revision, null, 2)));
+  assert.doesNotMatch(html, /raw-record|原始 JSON/);
+  assert.ok(!html.includes(`>${escape(revision.id)}<`), 'revision identifiers must not be shown as content');
   assert.ok(html.includes('查看当时的修改与依据'));
   assert.equal((html.match(/<article class="field-diff">/g) || []).length, revision.changes.length);
 });

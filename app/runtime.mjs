@@ -99,16 +99,16 @@ const revisionCorrection = '按反馈路径和类型修正；changes 只提交�
 export function offlineRevisionDecision(context, snapshot) {
   const userIndex = context.messages.findLastIndex(message => message.role === 'user');
   const results = context.messages.slice(userIndex + 1).filter(message => message.role === 'toolResult');
-  if (results.length) return [{ type: 'text', text: '离线修改夹具已执行；请查看服务端校验结果与待审差异。不是实际模型理解或效果验证。' }];
+  if (results.length) return [{ type: 'text', text: '演示修改稿已生成；请查看校验结果与修改前后对照。这不是模型对你文字的理解，也不是效果验证。' }];
   const request = snapshot.revisionRequest;
   const fixtureName = request?.offlineFixture;
-  const response = { phase: 'needs_input', summary: '离线模式不能解释任意反馈；正式内容保持不变。',
-    question: '如需验证局部修改流程，请显式选择离线测试夹具；真实语义处理需另行授权并配置真实模型。',
+  const response = { phase: 'needs_input', summary: '演示模式不能解释任意反馈；已确认内容保持不变。',
+    question: '如需体验修改流程，请在修改框下方选一份演示修改稿；理解自由文本需要使用真实研究。',
     changes: [], impact: [], unknowns: ['未验证真实模型对本次输入的理解与设计质量。'] };
   if (fixtureName === 'conflict') Object.assign(response, { phase: 'conflict',
-    summary: '离线冲突夹具：试穿必须保留与删除所有产品接触之间存在冲突。',
+    summary: '演示冲突：必须保留试穿，与删除所有产品接触相互冲突。',
     question: '请确认是否保留原先必须保留的试穿要求；未确认前不修改正式方案。' });
-  if (fixtureName === 'needs_input') Object.assign(response, { summary: '离线澄清夹具：参与容量会影响双人组织。',
+  if (fixtureName === 'needs_input') Object.assign(response, { summary: '演示澄清：参与容量会影响双人组织。',
     question: '每轮允许同时参与多少人？未知时可以明确标为待确认。' });
   if (['pair_45', 'invalid_reference'].includes(fixtureName)) {
     const target = snapshot.concepts.find(concept => concept.id === request.targetConceptId);
@@ -152,7 +152,7 @@ export function offlineRevisionDecision(context, snapshot) {
         { stage: '互相复核与带走 · 40–45分钟', action: `两人按原有记录卡互相订正，保留原方案带走内容与匿名规则。${target.journey.at(-1)?.action ?? '各自带走个人记录。'}` }],
       productTouchpoints, openQuestions,
     };
-    Object.assign(response, { phase: 'pending', summary: '离线测试夹具：45分钟双人试穿改为各自适配尺码独立配鞋；库存待确认，缺码则暂停。仅形成待审修改，不代表任意反馈语义理解。',
+    Object.assign(response, { phase: 'pending', summary: '演示修改稿：45分钟双人试穿改为各自适配尺码、独立配鞋；库存待确认，缺码则暂停。仅形成待审修改，不代表理解了任意反馈。',
       changes: Object.entries(proposed).filter(([field, after]) => JSON.stringify(after) !== JSON.stringify(target[field])).map(([field, after]) => ({
         field, after, reason: ['mechanism', 'journey'].includes(field)
           ? '离线设计设定：保留匿名双向复述，只调整45分钟时间组织与每人独立尺码配鞋；实际描述仅支持角色配对的创意推断，不证明适配或效果。'
@@ -161,7 +161,7 @@ export function offlineRevisionDecision(context, snapshot) {
       impact: ['仅调整独立量码配鞋、45分钟角色分段、试穿复测与相应库存/容量问题；保留标题、核心主张、历史证据、无关产品接触及带走内容。'],
       unknowns: ['实际尺码库存与每人可分配的一双尚未核实，缺码或不足须暂停并披露冲突。',
         '原定人数下量码、两段各15分钟试穿与复测的容量、人员及45分钟可执行性未经验证。',
-        ...(references.length ? [] : ['现有证据没有可引用的实际描述字段；本夹具不新增描述事实。'])] });
+        ...(references.length ? [] : ['现有证据没有可引用的实际描述字段；本演示稿不新增描述事实。'])] });
   }
   return [{ type: 'toolCall', id: randomUUID(), name: 'propose_concept_revision', arguments: response }];
 }
@@ -232,7 +232,7 @@ function mockConcepts(snapshot, card) {
       productTouchpoints: [`${contact}：由工作人员协助体验并收集舒适度描述。`],
       evidenceLinks: entities[0] ? [{ evidenceId: card.id, entityId: entities[0].id,
         observedField: 'properties.participation', observedValue: entities[0].properties.participation,
-        observation: `合成夹具返回 participation = ${entities[0].properties.participation}；不是真实受众事实。`,
+        observation: `合成数据显示参与方式为 ${entities[0].properties.participation}；不是真实受众事实。`,
         inspiration: '由共同节奏信号推导为定时、小组同步的参与组织；这是设计推断。' }] : [],
       openQuestions: ['时段容量、声音使用授权与工作人员配置尚待确认。'],
       unverifiedEffects: ['到场意愿、参与度和转化均未验证；不作效果预测。'] },
@@ -246,7 +246,7 @@ function mockConcepts(snapshot, card) {
       productTouchpoints: [`${contact}：每一站设置一项可以自主完成的产品体验。`],
       evidenceLinks: entities[1] ? [{ evidenceId: card.id, entityId: entities[1].id,
         observedField: 'properties.participation', observedValue: entities[1].properties.participation,
-        observation: `合成夹具返回 participation = ${entities[1].properties.participation}；不是真实受众事实。`,
+        observation: `合成数据显示参与方式为 ${entities[1].properties.participation}；不是真实受众事实。`,
         inspiration: '由自主叙事信号推导为个人选择顺序、产品反馈推进的机制；这是设计推断。' }] : [],
       openQuestions: ['内容版权、无障碍任务与各站空间条件尚待确认。'],
       unverifiedEffects: ['自主探索是否提升停留或品牌理解尚待用户研究。'] },
@@ -264,7 +264,7 @@ export function offlineDecision(context, snapshot) {
   const parsed = results.map(m => { try { return { name: m.toolName, value: JSON.parse(toolText(m)) }; } catch { return { name: m.toolName, value: { status: 'error' } }; } });
   const proposalResult = parsed.find(r => r.name === 'propose_design_response');
   if (proposalResult) return [{ type: 'text', text: proposalResult.value.accepted
-    ? '已更新离线演示提案板。所有文化返回均为虚构夹具；设计与效果仍需真实验证。'
+    ? '已更新离线演示提案板。所有文化返回均为虚构的合成数据；设计与效果仍需真实验证。'
     : '提案未通过项目约束校验，未应用修改。' }];
   const proposal = { baseVersion: snapshot.version,
     phase: 'needs_input', summary: '', questions: [], concepts: [] };
@@ -341,7 +341,7 @@ export function recordEvidence(project, operation, input, execution) {
       referenceStatus: synthetic ? '合成样本，未解析真实实体' : '查看实际工作流解析信息；未自动确认代理品牌' },
     queriedAt: new Date().toISOString(), requestRef: execution.correlationId, synthetic,
     relevant: synthetic ? project.scenario !== 'irrelevant' : null,
-    boundary: synthetic ? '离线合成夹具；虚构实体，非 Qloo 数据、非真实受众画像或活动效果证据。'
+    boundary: synthetic ? '合成数据；虚构实体，非 Qloo 数据、非真实受众画像或活动效果证据。'
       : '文化关联不证明个体行为、因果效果、配色、材料、预算、版权或合作方可用性。',
     rawResult: structuredClone(result) };
   project.evidence.push(card);
@@ -395,7 +395,7 @@ export function wrapProjectExecutor(project, officialExecutor, env = process.env
       if (project.referenceResolutions?.length) execution = { ...execution,
         result: { ...execution.result, referenceResolution: referenceResolutionView(project) } };
     } catch (error) {
-      action(project, 'query', '文化研究查询未完成', project.mode === 'offline' ? '离线夹具执行错误' : '官方查询失败；本轮所有真实查询已停止', 'error');
+      action(project, 'query', '文化研究查询未完成', project.mode === 'offline' ? '演示数据读取出错' : '官方查询失败；本轮所有真实查询已停止', 'error');
       if (project.mode === 'live') {
         project.runtime.failure = safeRuntimeFailure(project, 'qloo');
         stopLiveRun(project, project.runtime.failure, true);
@@ -434,7 +434,7 @@ export function wrapProjectExecutor(project, officialExecutor, env = process.env
             : '实际返回字段可被精确引用；描述可支持标明边界的设计推断，不证明受众或效果。',
       status === 'needs_input', empty ? '不要重复相同空查询；可调整明确参数、使用已有证据提交草案，或以 insufficient_evidence 暂停。' : undefined);
     execution = { ...execution, result: { ...execution.result, feedback } };
-    action(project, 'query', project.mode === 'offline' ? '读取离线合成夹具' : '执行官方文化研究查询',
+    action(project, 'query', project.mode === 'offline' ? '读取演示用合成数据' : '执行官方文化研究查询',
       execution.result.status === 'error' ? (project.mode === 'live' ? '查询失败；没有支持设计的证据；真实模式已停止后续查询' : '离线模拟查询失败；没有支持设计的证据') : card?.relevant === false ? '返回内容无关；不能用作设计依据' : '返回字段已保留，等待模型区分事实与设计转译',
       execution.result.status === 'error' ? 'error' : 'done');
     return execution;

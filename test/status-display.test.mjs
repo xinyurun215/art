@@ -30,7 +30,7 @@ function ui() {
 }
 const overview = screen => screen.get('project-status').innerHTML.split('<details class="project-diagnostics"')[0];
 
-test('accepted/live-off shows confirmed content and a viewing next step; old feedback is explicitly historical', () => {
+test('accepted/live-off shows confirmed content and a viewing next step; internal feedback and usage stay hidden', () => {
   const screen = ui();
   const before = JSON.stringify(saved);
   screen.state.config = config(false);
@@ -38,10 +38,7 @@ test('accepted/live-off shows confirmed content and a viewing next step; old fee
   assert.match(overview(screen), /修改已接受.*已确认 v3/);
   assert.match(overview(screen), /查看已确认方案/);
   assert.doesNotMatch(overview(screen), /等待你审查|继续修改已选方向/);
-  assert.match(screen.get('project-status').innerHTML, /<summary>历史工具反馈（不代表当前状态或下一步）<\/summary>/);
-  assert.match(screen.get('project-status').innerHTML, /累计请求预留：模型 8 · Qloo 4/);
-  assert.match(screen.get('project-status').innerHTML, /不等于本次实际发送/);
-  assert.doesNotMatch(screen.get('project-status').innerHTML, /真实模型请求 8|真实 Qloo 请求 4/);
+  assert.doesNotMatch(screen.get('project-status').innerHTML, /REVISION_RESPONSE_SAVED|pending 待审修改|请求预留|模型 8|Qloo 4|raw-record/);
   for (const id of ['send-message', 'message', 'submit-revision', 'revision-text']) assert.equal(screen.get(id).disabled, true, id);
   assert.match(screen.get('revision-note').textContent, /当前无法生成新修改/);
   assert.doesNotMatch(screen.get('concepts').innerHTML, /已选择 · 继续修改此概念/);
@@ -82,7 +79,7 @@ test('service status is distinct from saved live provenance and from the new-pro
     screen.renderProject(offline);
     assert.match(screen.get('mode-explanation').textContent, /离线模拟.*不调用真实服务/);
     assert.equal(screen.get('submit-revision').disabled, false);
-    assert.match(screen.get('project-status').innerHTML, /累计请求预留：模型 8 · Qloo 4/);
+    assert.match(screen.get('project-status').innerHTML, /本轮未重新查询/);
   }
 });
 
