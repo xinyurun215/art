@@ -4,6 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const briefFields = ['request', 'brand', 'goal', 'references', 'venue', 'budget', 'mustKeep', 'avoid'];
   const state = { project: null, config: null, pending: false, pollToken: 0, messageCount: 0, draftConceptId: null, pendingFeedback: null };
+  let modeChosen = false;
   const storageKey = 'art-current-project';
   const demo = {
     request: '合成验收任务：为虚构运动鞋品牌「未定式」的新日常鞋款设计快闪。希望来访者通过身体参与和试穿理解产品，比较两种实质不同的参与方式。音乐、电影偏好只是待研究信号，不是真实受众画像。',
@@ -157,6 +158,7 @@
       state.config = null;
       showError(error.message, loadConfig);
     }
+    if (!state.project && !modeChosen && state.config?.modes?.live?.available) $('mode').value = 'live';
     if (state.project) renderProject(state.project); else updateMode();
   }
 
@@ -578,6 +580,7 @@
   $('load-demo').addEventListener('click', () => {
     fillBrief(demo);
     $('mode').value = 'offline';
+    modeChosen = true;
     updateMode();
     $('request').focus();
   });
@@ -608,10 +611,11 @@
   $('load-ambiguous').addEventListener('click', () => {
     fillBrief({ ...demo, request: '合成验收任务：为虚构运动鞋品牌「未定式」设计快闪。希望保留试穿，用音乐和电影作为研究线索。城市与场地还没想好，请先确认会影响方案的条件。', venue: '', budget: '' });
     $('mode').value = 'offline';
+    modeChosen = true;
     updateMode();
     $('request').focus();
   });
-  $('mode').addEventListener('change', updateMode);
+  $('mode').addEventListener('change', () => { modeChosen = true; updateMode(); });
   $('offline-revision-fixture').addEventListener('change', () => {
     $('offline-revision-note').textContent = $('offline-revision-fixture').value
       ? '演示模式不理解自由文本；预设修改稿只用来展示审查流程。'
