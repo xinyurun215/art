@@ -124,3 +124,25 @@ test('page fallbacks and actual exported demo include English headings and prese
   assert.match(exported, /私人原文/); assert.match(exported, /外部实体原名/);
   assert.equal(JSON.stringify(project), before);
 });
+
+test('export does not turn unfilled optional constraint fields into a claim of no client constraints', () => {
+  const page = screen();
+  const project = createProject({ brief: { request: 'Morrow in London. Keep hands-on lamp adjustment; avoid signup and personal data.' } });
+  const before = JSON.stringify(project);
+  const exported = page.proposalMarkdown(project);
+  assert.match(exported, /Optional fields below.*separately recorded/);
+  assert.match(exported, /Keep hands-on lamp adjustment; avoid signup and personal data/);
+  assert.doesNotMatch(exported, /- (?:Must keep|Do not \/ avoid): None/);
+  assert.match(exported, /- Must keep: No items recorded here; review the original request and clarifications/);
+  assert.equal(JSON.stringify(project), before);
+  project.brief.mustKeep = ['hands-on adjustment']; project.brief.avoid = ['signup'];
+  const populated = JSON.stringify(project);
+  assert.match(page.proposalMarkdown(project), /- Must keep: hands-on adjustment\n- Do not \/ avoid: signup/);
+  assert.equal(JSON.stringify(project), populated);
+  project.brief.mustKeep = []; project.brief.avoid = [];
+  project.clarifications = [{ question: 'Keep the earlier constraints?', answer: 'Remove the earlier keep and avoid items.' }];
+  const cleared = page.proposalMarkdown(project);
+  assert.match(cleared, /Remove the earlier keep and avoid items/);
+  assert.match(cleared, /- Must keep: No items recorded here; review the original request and clarifications/);
+  assert.doesNotMatch(cleared, /Not entered separately/);
+});
