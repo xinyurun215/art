@@ -132,6 +132,9 @@
     document.querySelectorAll('[data-lock-field]').forEach((button) => {
       button.disabled = busy || viewOnly || state.project?.revisionRequest?.status === 'running';
     });
+    document.querySelectorAll('[data-reference-choice]').forEach((button) => {
+      button.disabled = busy || generationUnavailable;
+    });
     const feedbackText = $('pending-feedback-text');
     if (feedbackText) {
       const stale = pending?.baseVersion !== state.project?.version || pending?.targetConceptId !== selected?.id;

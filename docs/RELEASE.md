@@ -18,6 +18,8 @@ The prior minimal-repair suite passed 254 tests with 14 isolated-PostgreSQL skip
 
 The release's complete offline regression passed 270 tests with 14 isolated-PostgreSQL skips (284 total, zero failures). No production database was substituted for the skipped tests.
 
+The first anonymous production run exposed a blocked entity-choice button after the request finished. The focused repair updates the existing buttons when the request's busy state clears, retaining service-unavailable and read-only guards. Its regression reproduced the failure before repair; 28 related checks passed afterward. No existing provider request was replayed for this repair.
+
 The known acceptance usage entering this release is 13 model HTTP attempts and 4 Qloo attempts against the authorized cumulative 50/50 limits. An earlier request is still unknown, not zero. The production 50/50 per-project caps are distinct from this operator's cumulative authorization; creating another project does not renew the operator budget. No reset, top-up or return to the old six-request cap is authorized.
 
 ## Remaining acceptance gate

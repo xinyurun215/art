@@ -22,13 +22,34 @@ function ui() {
     return elements.get(id);
   };
   const decisions = ['accept', 'reject'].map(decision => ({ dataset: { revisionDecision: decision } }));
+  const referenceChoices = [{ disabled: true }, { disabled: true }];
   const context = { URL, history: { replaceState() {} }, localStorage: { setItem() {} }, window: { location: { href: 'http://127.0.0.1/' } },
     document: { getElementById: get, body: { classList: { add() {} }, setAttribute() {} },
-      querySelectorAll(selector) { return selector === '[data-revision-decision]' ? decisions : []; } } };
-  runInNewContext(source.replace("  $('load-demo').addEventListener", '  globalThis.ui = { state, renderProject, updateMode, loadConfig }; return;\n  $(\'load-demo\').addEventListener'), context);
-  return { ...context.ui, context, get, decisions };
+      querySelectorAll(selector) { return selector === '[data-revision-decision]' ? decisions : selector === '[data-reference-choice]' ? referenceChoices : []; } } };
+  runInNewContext(source.replace("  $('load-demo').addEventListener", '  globalThis.ui = { state, renderProject, updateMode, loadConfig, updateControls }; return;\n  $(\'load-demo\').addEventListener'), context);
+  return { ...context.ui, context, get, decisions, referenceChoices };
 }
 const overview = screen => screen.get('project-status').innerHTML.split('<details class="project-diagnostics"')[0];
+
+test('entity choices unlock when the request finishes and stay disabled while busy, unavailable or read only', () => {
+  const screen = ui();
+  screen.state.config = config(true);
+  screen.state.project = { ...saved, selectedConceptId: null, concepts: [], revisions: [], revisionRequest: null,
+    status: { phase: 'needs_input' } };
+  screen.state.pending = true;
+  screen.updateControls();
+  assert(screen.referenceChoices.every(button => button.disabled));
+  screen.state.pending = false;
+  screen.updateControls();
+  assert(screen.referenceChoices.every(button => !button.disabled), 'completed requests must re-enable the existing candidate buttons');
+  screen.state.config = config(false);
+  screen.updateControls();
+  assert(screen.referenceChoices.every(button => button.disabled));
+  screen.state.config = config(true);
+  screen.state.project.provenance = { kind: 'completed_case' };
+  screen.updateControls();
+  assert(screen.referenceChoices.every(button => button.disabled));
+});
 
 test('accepted/live-off shows confirmed content and a viewing next step; internal feedback and usage stay hidden', () => {
   const screen = ui();
