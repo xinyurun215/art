@@ -1,0 +1,788 @@
+{
+  "id": "case-rill-daypack-20261024",
+  "version": 3,
+  "mode": "live",
+  "provenance": {
+    "kind": "completed_case",
+    "title": "TasteStage recorded completed case · fictional Rill daypack pop-up",
+    "recordedAt": "2026-10-24",
+    "acceptedAt": "2026-10-24T03:29:25.019Z",
+    "description": "Recorded on 2026-10-24: fresh real-model proposals and real Qloo evidence for Rill, a fictional lightweight daypack brand. A human confirmed Bonobo as the electronic artist used as a research signal. Cultural evidence is not proof of audience preference or product effects.",
+    "presentationNote": "Read-only recorded case; opening it makes no new requests. Private conversation, access details and raw responses are omitted.",
+    "scopeNote": "Human feedback superseded draft 1 and led to accepted draft 2, which aligns the 15-minute timeline and pauses walking for strap adjustment. Only the accepted v2-to-v3 differences are shown. Handover and buffer share minutes 14–15 inside the ceiling; no extra slack is claimed. Feasibility, safety and effects remain unverified."
+  },
+  "brief": {
+    "request": "Fictional public brief: design a one-afternoon London launch pop-up for Rill, an invented lightweight daypack brand. Visitors should understand fit and carrying comfort through hands-on try-on. Compare two different ways to participate and meet the product. Bonobo means the electronic music artist and is a client-provided research signal, not a verified audience profile. Keep try-on; avoid live performances and forced signup. Venue, budget, safety and effects remain unverified.",
+    "brand": "Rill · fictional lightweight daypack brand",
+    "goal": "Help visitors understand daypack fit and carrying comfort through try-on.",
+    "references": [
+      "Bonobo"
+    ],
+    "venue": "London; illustrative 80 square meters indoors. Exact venue and safety conditions are unconfirmed.",
+    "budget": "Illustrative GBP 8,000–12,000; not a verified quote.",
+    "mustKeep": [
+      "try-on"
+    ],
+    "avoid": [
+      "live performances",
+      "forced signup"
+    ]
+  },
+  "status": {
+    "phase": "ready",
+    "detail": "The partial revision was accepted as the confirmed version"
+  },
+  "concepts": [
+    {
+      "title": "Load Line: a public swap circuit",
+      "coreClaim": "The try-on is taught by comparison: each visitor carries realistic daily loads through the same short circuit in two different packs and feels which one fits better, in public, at their own pace, without booking and without leaving personal data.",
+      "mechanism": {
+        "description": "The 80 square metres is divided into five zones in one direction of travel: a payload bay with colour-coded totes (commute, laptop-and-lunch, day out) labelled by weight; a strap-set mirror where a host sets torso and sternum strap length once per visitor; a three-minute circuit of a low step platform, a 20-metre walk lane and a reach-and-squat marker; a swap bench holding a second pack already set to the same strap marks; and an exit board where the visitor pins one paper verdict per pack. The try-on is comparative, semi-public and self-paced: no appointment, no registration or contact details, and the only record is a paper fit card the visitor keeps plus anonymous board entries.",
+        "organization": "Sequenced self-serve try-on circuit with an anonymous shared verdict board"
+      },
+      "journey": [
+        {
+          "action": "Visitor enters without registering, reads a single A1 board explaining the three-step sequence, and picks a payload tote by the kind of day they actually carry.",
+          "stage": "Arrive"
+        },
+        {
+          "action": "A host sets torso strap length and sternum strap against the visitor's back and records the settings on a blank fit card.",
+          "stage": "Set the straps"
+        },
+        {
+          "action": "Visitor walks the step platform, the 20-metre lane and the reach-and-squat marker with the first pack, naming pressure points aloud to a companion or to the host.",
+          "stage": "First circuit"
+        },
+        {
+          "action": "At the swap bench the visitor moves the same payload into a second pack pre-set to the same strap marks and repeats the identical route, so load and task stay constant.",
+          "stage": "Swap"
+        },
+        {
+          "action": "Visitor pins one anonymous paper verdict per pack on the exit board, each marked with pack ID and the station where discomfort appeared.",
+          "stage": "Verdict"
+        },
+        {
+          "action": "Visitor takes the fit card with both strap settings and the pack IDs they preferred, so the answer to 'which fitted better' survives the walk home.",
+          "stage": "Leave"
+        }
+      ],
+      "productTouchpoints": [
+        "Weight-labelled payload totes in three daily-load profiles",
+        "Strap-setting mirror station with a printed torso-length gauge",
+        "Three-minute circuit: low step platform, 20 m lane markings, reach-and-squat marker",
+        "Swap bench with two packs pre-set to matching strap marks",
+        "Anonymous paper verdict slips and pack ID tags",
+        "Paper fit card carrying both strap settings"
+      ],
+      "openQuestions": [
+        "The packs are fictional and unspecified: strap geometry, torso-length range and pack weights must be checked against real samples before the circuit is built, or the comparison teaches nothing reliable.",
+        "Whether a step platform, floor lane markings and weighted totes are permitted in the eventual London venue, and what supervision or insurance they require, is unconfirmed; venue and safety conditions remain open.",
+        "The circuit assumes visitors arrive in a flow rather than a queue; the effect of waiting beside a public verdict board is unknown, and no attendance figure has been estimated or measured.",
+        "Whether an anonymous public board produces honest verdicts when visitors notice others watching has not been tested.",
+        "The illustrative GBP 8,000–12,000 envelope has not been quoted against any supplier; totes, printed fit cards, floor graphics, host hours and any platform hire sit inside it as planning assumptions only."
+      ],
+      "unverifiedEffects": [
+        "That swapping packs on an identical route makes comfort differences easier to notice and describe is a design assumption, not a measured outcome.",
+        "No claim is made about visitor numbers, dwell time, verdict completion, purchase intent, recall or brand affinity; none of these were observed or predicted by the saved evidence.",
+        "That daily-load totes matching real commuter weight produce a more truthful fit judgment than an unloaded try-on is untested.",
+        "No relationship between this concept and Bonobo, Bonobo's listeners, or the returned brands' customers has been established."
+      ],
+      "id": "case-concept-load-line",
+      "evidenceLinks": [
+        {
+          "entityId": "29D35818-60FF-4833-B2D7-7EB74E4633CF",
+          "observedField": "properties.description",
+          "observedValue": "Founded in 2009 in Vancouver, the brand specializes in manufacturing functional, design-led backpacks, travel goods, and accessories. It is widely recognized for combining nostalgic heritage silhouettes with contemporary, clean aesthetics. Its products are geared towards students, professionals, and travelers who value utility and timeless style. The company operates primarily through direct-to-consumer and retail channels, maintaining a reputation for reliability in the everyday-carry market.",
+          "observation": "Saved returned description of Herschel Supply Co: the brand is described as making functional, design-led backpacks and travel goods, with products geared towards students, professionals and travellers who value utility, and a reputation in the everyday-carry market.",
+          "inspiration": "Design inference: build the try-on circuit around ordinary daily loads (commute, laptop-and-lunch, day out) rather than gym or hiking loads, so the task matches the everyday-carry use this description names. This is our reading of a returned description, not a claim about Rill's customers.",
+          "evidenceId": "case-evidence-carry-brands"
+        },
+        {
+          "entityId": "491B649E-3A7E-4E3B-B69D-090DC98E5D4C",
+          "observedField": "properties.description",
+          "observedValue": "Bellroy is a design-obsessed accessories brand founded in 2010 that reimagined the everyday wallet by removing excess bulk. Headquartered in Melbourne, Australia, the brand has expanded its expertise into a wide range of travel bags, backpacks, and tech organizers. Committed to business as a force for good, the company utilizes recycled materials and sustainably sourced leather to create durable products. Their target audience includes professionals and travelers who value high-performance, minimalist aesthetics and environmental responsibility.",
+          "observation": "Saved returned description of Bellroy: the brand is described as reimagining the everyday wallet by removing excess bulk, now making travel bags, backpacks and tech organisers, aimed at professionals and travellers who value minimalist aesthetics.",
+          "inspiration": "Design inference: make the pack-to-pack swap the main teaching moment of the try-on, so the visitor feels what reduced bulk changes at the shoulder and back contact points instead of reading a specification. Bulk reduction is Bellroy's description, not a measured property of Rill's packs.",
+          "evidenceId": "case-evidence-carry-brands"
+        },
+        {
+          "entityId": "ACB1D32F-D9DA-455B-A962-14A6D7B4ABB2",
+          "observedField": "properties.description",
+          "observedValue": "World-leading London museum on Kensington High Street showcasing contemporary design and innovation across exhibitions, shops, cafés, education and public programmes.",
+          "observation": "Saved returned description of the Design Museum: a London museum on Kensington High Street with exhibitions, shops, cafés, education and public programmes.",
+          "inspiration": "Format inference only: the drop-in public-programme rhythm suggests an unticketed, walk-in try-on circuit for a one-afternoon launch. No venue, hire or partnership with this museum is implied, and none is confirmed.",
+          "evidenceId": "case-evidence-london-places"
+        }
+      ]
+    },
+    {
+      "title": "Fit Bench: one-to-one measured try-on",
+      "coreClaim": "The try-on is taught as measurement on the visitor's own body inside a 15-minute maximum from arrival to departure: one fitter, one pack, three comfort readings and one recorded strap change, taken in a single private carry that pauses once at a safe stop for the adjustment and never asks the visitor to queue, register or perform for a crowd.",
+      "mechanism": {
+        "description": "The 80 square metres is arranged as one private route with no waiting area and no public board: a ready bench holding one pack pre-set to a mid-range torso strap plus one pre-counted day kit (laptop sleeve, bottle, jacket, lunch) laid out flat; a measurement spot on the wall with a height strip and torso-length gauge; a taped safety box that lies off the 20-metre indoor loop, with a stop marker in front of it; and a marked halfway point on the loop. A single fitter runs one visitor through a 15-minute maximum, timed from the moment the visitor steps in and using one timeline throughout. Minutes 0–1.5: briefing, no registration and no obligation to continue, plus confirmation that the visitor may stop at any point. Minutes 1.5–3: torso length and shoulder width measured at the wall and written on the blank fit card, and the pack's torso strap and sternum strap set once and marked in tape. Minutes 3–4.5: the visitor stands still with the loaded pack and the fitter takes reading 1 against named contact points. Minutes 4.5–7: the visitor walks the loop alone at their own pace to the stop marker. Minutes 7–9: the visitor stops still inside the taped safety box, off the loop; the fitter changes exactly one variable (sternum strap position or torso strap length, written down), takes reading 2 standing still, and no strap is touched while the visitor is walking. Minutes 9–10.5: the visitor resumes and walks the remaining loop back to the bench. Minutes 10.5–12: reading 3 standing at the bench, and the visitor adds or removes one item at a time to match their own typical day. Minutes 12–14: the fitter writes the fit card in front of the visitor (measured torso length, the one change, all three readings, the visitor's notes). Minutes 14–15: handover and questions, with one minute of buffer so the session ends by 15 at the latest and can end earlier at any point. The try-on stays conversational and private; no contact details are collected or retained, and the only record is the handwritten card the visitor keeps.",
+        "organization": "Private one-to-one try-on bench with a 15-minute maximum session and one safe walking stop"
+      },
+      "journey": [
+        {
+          "action": "Visitor steps straight onto the start point with no queuing; the fitter states that this is a 15-minute maximum, single-visitor try-on with no registration, no contact details and no obligation to continue, and that the visitor may stop at any time.",
+          "stage": "Briefing (min 0–1.5)"
+        },
+        {
+          "action": "Fitter measures torso length and shoulder width at the wall gauge, writes the numbers on the blank fit card in view of the visitor, and sets the pre-fitted pack's torso strap and sternum strap once, marking both in tape.",
+          "stage": "Measure and set straps (min 1.5–3)"
+        },
+        {
+          "action": "Visitor stands still at the bench with the pack loaded with the pre-counted standard day kit, and the fitter takes comfort reading 1 against named contact points.",
+          "stage": "Reading 1, standing (min 3–4.5)"
+        },
+        {
+          "action": "Visitor walks the marked 20-metre loop alone at their own pace and comes to a full stop at the stop marker in front of the taped safety box, off the route.",
+          "stage": "Walk to the stop marker (min 4.5–7)"
+        },
+        {
+          "action": "Visitor stays rooted inside the safety box; the fitter changes exactly one variable — sternum strap position or torso strap length — writes it on the card, and takes reading 2 standing still. No strap is touched while the visitor is moving.",
+          "stage": "Stopped: single adjustment and reading 2 (min 7–9)"
+        },
+        {
+          "action": "Visitor resumes walking and completes the remaining loop back to the bench.",
+          "stage": "Resume walk to the bench (min 9–10.5)"
+        },
+        {
+          "action": "Fitter takes reading 3 standing at the bench and the visitor adds or removes one item at a time from the day kit to match their own typical day.",
+          "stage": "Reading 3 and load check (min 10.5–12)"
+        },
+        {
+          "action": "Fitter writes the fit card in front of the visitor: measured torso length, the one recorded change, all three readings and the visitor's own notes. No contact details are kept.",
+          "stage": "Write the fit card (min 12–14)"
+        },
+        {
+          "action": "Visitor takes the handwritten card and the fitter answers remaining questions; one minute of buffer means the session ends by 15 at the latest and may end earlier at any point.",
+          "stage": "Handover and buffer (min 14–15 ceiling)"
+        }
+      ],
+      "productTouchpoints": [
+        "Measurement wall with height strip and torso-length gauge",
+        "Low fitting bench holding one pre-fitted pack at a time",
+        "Pre-counted standard day kit laid out flat, adjusted one item at a time",
+        "Tape markers on torso strap and sternum strap, re-set once while the visitor stands still",
+        "Floor-marked 20-metre loop with a stop marker in front of a taped safety box set off the route",
+        "Contact-point diagram the fitter uses to name readings, shown to the visitor at each standing reading",
+        "Blank handwritten fit card written up in front of the visitor in the last minutes of the session"
+      ],
+      "openQuestions": [
+        "Whether the minute split from briefing to handover can actually be held inside 15 minutes with an unfamiliar pack is unverified; it is a planning estimate, not a rehearsed schedule.",
+        "Whether the fitter can make one strap change and take reading 2 at the stop marker, inside the taped safety box, in two minutes without the visitor leaving it or another visitor walking into the stop zone is untested.",
+        "Whether a short measurement and a 1.5-minute briefing is enough for a first-time visitor to give an informed reading is untested.",
+        "The packs are fictional and unspecified: strap geometry, torso-length range and pack weights must be checked against real samples, and whether the halfway stop marker and safety box can be placed without blocking the entrance or an emergency route is unconfirmed.",
+        "What the room does with a visitor arriving while a session is running is unresolved, since the waiting bench has been removed and there is no booking or queue system.",
+        "The three reading protocols and the named contact points are a designer's proposal, not a validated fit method, and the shorter timing could make them less reliable.",
+        "Exact venue, insurance, floor loading, floor taping or fixing and any supervision or safety conditions are unconfirmed.",
+        "Whether visitors accept a no-data, handwritten-record try-on rather than a digital one has not been tested."
+      ],
+      "unverifiedEffects": [
+        "That three readings compressed into a 15-minute maximum still produce an accurate comfort judgment is an assumption; no comfort, fit-accuracy or learning effect was measured, and the shorter timing may reduce it.",
+        "That one mid-walk stop, with a single strap change made while the visitor stands still, is enough to let a visitor separate the effect of that change from the effect of resuming walking is untested.",
+        "Whether stopping and resuming breaks the rhythm of the carry and weakens the comparison, or makes the change easier to notice, is unknown.",
+        "Whether 15 minutes per fitter works as an afternoon throughput or becomes a bottleneck is unknown; the shorter session may serve more visitors or may simply compress the experience, and no attendance figure has been estimated or measured.",
+        "That removing the waiting bench and the longer walk preserves the private, unhurried quality of the one-to-one try-on is a design argument, not an observed preference.",
+        "No claim is made about dwell time, conversion, trust, recall or repeat visits, and none of these were returned by the saved evidence.",
+        "No relationship between this concept and Bonobo, its listeners, or the returned brands' customers has been established."
+      ],
+      "id": "case-concept-fit-bench",
+      "evidenceLinks": [
+        {
+          "entityId": "491B649E-3A7E-4E3B-B69D-090DC98E5D4C",
+          "observedField": "properties.description",
+          "observedValue": "Bellroy is a design-obsessed accessories brand founded in 2010 that reimagined the everyday wallet by removing excess bulk. Headquartered in Melbourne, Australia, the brand has expanded its expertise into a wide range of travel bags, backpacks, and tech organizers. Committed to business as a force for good, the company utilizes recycled materials and sustainably sourced leather to create durable products. Their target audience includes professionals and travelers who value high-performance, minimalist aesthetics and environmental responsibility.",
+          "observation": "Saved returned description of Bellroy: described as design-obsessed, expanding from removing everyday bulk into backpacks and organisers, with an audience described as valuing high-performance and minimalist aesthetics.",
+          "inspiration": "Design inference: because the description frames this category around performance and considered reduction, the try-on is built as recorded evidence (three timed readings, one variable changed at a time) rather than a first impression. This is our design choice, not a claim that Rill or Bellroy customers behave this way.",
+          "evidenceId": "case-evidence-carry-brands"
+        },
+        {
+          "entityId": "29D35818-60FF-4833-B2D7-7EB74E4633CF",
+          "observedField": "properties.description",
+          "observedValue": "Founded in 2009 in Vancouver, the brand specializes in manufacturing functional, design-led backpacks, travel goods, and accessories. It is widely recognized for combining nostalgic heritage silhouettes with contemporary, clean aesthetics. Its products are geared towards students, professionals, and travelers who value utility and timeless style. The company operates primarily through direct-to-consumer and retail channels, maintaining a reputation for reliability in the everyday-carry market.",
+          "observation": "Saved returned description of Herschel Supply Co: products described as geared towards students, professionals and travellers, with clean aesthetics and a reputation in the everyday-carry market.",
+          "inspiration": "Design inference: a swappable standard day kit lets one try-on bench serve different daily loads and body sizes without audience data or a long visitor survey.",
+          "evidenceId": "case-evidence-carry-brands"
+        },
+        {
+          "entityId": "7904670F-7C52-48EF-B9D8-2420A7175C61",
+          "observedField": "properties.description",
+          "observedValue": "Zaha Hadid–designed showroom and cultural space showcasing Roca bathroom products, hosting exhibitions, events and professional meetings in a sculpted, water-inspired interior.",
+          "observation": "Saved returned description of Roca London Gallery: a Zaha Hadid-designed showroom and cultural space showcasing Roca bathroom products, hosting exhibitions, events and professional meetings.",
+          "inspiration": "Room-logic inference only: a single sculpted interior can stage a slow, private one-to-one try-on inside 80 square metres without a public board. No association with Roca, this gallery or its programming is claimed, available or confirmed.",
+          "evidenceId": "case-evidence-london-places"
+        }
+      ]
+    }
+  ],
+  "selectedConceptId": "case-concept-fit-bench",
+  "lockedFields": [
+    "title"
+  ],
+  "evidence": [
+    {
+      "id": "case-evidence-london-places",
+      "projectId": "case-rill-daypack-20261024",
+      "source": "Qloo official workflow",
+      "synthetic": false,
+      "queriedAt": "2026-10-24T03:11:00.515Z",
+      "boundary": "Cultural associations do not prove individual behavior, causal effects, colors, materials, budget, rights clearance, or partner availability.",
+      "relevant": null,
+      "requestRef": null,
+      "query": {
+        "workflow": "recommend",
+        "designQuestion": "Which cultural signals could change how people participate and meet the product?",
+        "input": {
+          "target_type": "place",
+          "signals": [
+            "5861FE97-122C-4A14-B5A6-0150B105D45F"
+          ],
+          "signal_location": "London, United Kingdom",
+          "filter_location": "London, United Kingdom",
+          "limit": 10,
+          "explain": true
+        }
+      },
+      "context": {
+        "venue": "London; illustrative 80 square meters indoors. Exact venue and safety conditions are unconfirmed.",
+        "geographicFilter": "London, United Kingdom",
+        "referenceStatus": "Check the actual workflow resolution; no proxy brand was automatically confirmed"
+      },
+      "inputReferences": [
+        {
+          "id": "5861FE97-122C-4A14-B5A6-0150B105D45F",
+          "name": "Bonobo",
+          "type": "urn:entity:artist",
+          "match": "identifier",
+          "synthetic": false,
+          "note": "From the actual official workflow interpretation; client references are still not a verified audience profile"
+        }
+      ],
+      "returnedEntities": [
+        {
+          "entity_id": "B937680F-0D1A-4DBE-B2E2-EF4A9A628C51",
+          "name": "Brick Lane Vintage",
+          "type": "urn:entity",
+          "subtype": "urn:entity:place",
+          "popularity": 0.9710900519705613,
+          "affinity": 0.9663355024168979,
+          "properties": {
+            "description": "Curated vintage clothing stalls and individual vendor booths on East London's Brick Lane, offering eclectic retro fashion and accessories with varied sizing and pricing.",
+            "short_description": "Curated vintage clothing stalls and individual vendor booths on East London's Brick Lane, offering eclectic retro fashion and accessories with varied sizing and pricing."
+          }
+        },
+        {
+          "entity_id": "796C1ABA-F873-4656-94B9-3E2E2B89951A",
+          "name": "The Apple Market",
+          "type": "urn:entity",
+          "subtype": "urn:entity:place",
+          "popularity": 0.9757113496113259,
+          "affinity": 0.9661091988831041,
+          "properties": {
+            "description": "Artisan stalls selling crafts, antiques and food beneath an iconic Italianate colonnade in a historic former vegetable market in central London.",
+            "short_description": "Artisan stalls selling crafts, antiques and food beneath an iconic Italianate colonnade in a historic former vegetable market in central London."
+          }
+        },
+        {
+          "entity_id": "ACB1D32F-D9DA-455B-A962-14A6D7B4ABB2",
+          "name": "the Design Museum",
+          "type": "urn:entity",
+          "subtype": "urn:entity:place",
+          "popularity": 0.9998789049890773,
+          "affinity": 0.9657803234797302,
+          "properties": {
+            "description": "World-leading London museum on Kensington High Street showcasing contemporary design and innovation across exhibitions, shops, cafés, education and public programmes.",
+            "short_description": "World-leading London museum on Kensington High Street showcasing contemporary design and innovation across exhibitions, shops, cafés, education and public programmes."
+          }
+        },
+        {
+          "entity_id": "239FD0D2-6121-4FD0-9BE3-D6B2E79531D2",
+          "name": "Piccadilly Circus",
+          "type": "urn:entity",
+          "subtype": "urn:entity:place",
+          "popularity": 0.9997732254473365,
+          "affinity": 0.9655751782156108,
+          "properties": {
+            "description": "Central London road junction famed for bright neon advertising, lively crowds, theaters, and nightlife at the convergence of major shopping streets.",
+            "short_description": "Central London road junction famed for bright neon advertising, lively crowds, theaters, and nightlife at the convergence of major shopping streets."
+          }
+        },
+        {
+          "entity_id": "7904670F-7C52-48EF-B9D8-2420A7175C61",
+          "name": "Roca London Gallery",
+          "type": "urn:entity",
+          "subtype": "urn:entity:place",
+          "popularity": 0.8941155996747522,
+          "affinity": 0.9649623304233365,
+          "properties": {
+            "description": "Zaha Hadid–designed showroom and cultural space showcasing Roca bathroom products, hosting exhibitions, events and professional meetings in a sculpted, water-inspired interior.",
+            "short_description": "Zaha Hadid–designed showroom and cultural space showcasing Roca bathroom products, hosting exhibitions, events and professional meetings in a sculpted, water-inspired interior."
+          }
+        },
+        {
+          "entity_id": "15713AB6-6AE4-43E7-B58E-48558B20B4B1",
+          "name": "Victoria Miro",
+          "type": "urn:entity",
+          "subtype": "urn:entity:place",
+          "popularity": 0.9988098514877414,
+          "affinity": 0.9645333761974001,
+          "properties": {
+            "description": "Contemporary art gallery in London showcasing established and emerging artists, featuring a garden for occasional site-specific installation art.",
+            "short_description": "Contemporary art gallery in London showcasing established and emerging artists, featuring a garden for occasional site-specific installation art."
+          }
+        },
+        {
+          "entity_id": "DD39E7B7-206E-4EDC-8FA5-913A2FF8C06D",
+          "name": "The Photographers' Gallery",
+          "type": "urn:entity",
+          "subtype": "urn:entity:place",
+          "popularity": 0.9981328709435493,
+          "affinity": 0.9642744771591066,
+          "properties": {
+            "description": "Three-floor central London gallery showcasing international, multi-genre photography with exhibitions, talks, courses, café and specialist print shop.",
+            "short_description": "Three-floor central London gallery showcasing international, multi-genre photography with exhibitions, talks, courses, café and specialist print shop."
+          }
+        },
+        {
+          "entity_id": "B42010CE-F5D8-4509-BBED-79845D0646F3",
+          "name": "The Brick Lane Gallery",
+          "type": "urn:entity",
+          "subtype": "urn:entity:place",
+          "popularity": 0.9419774740992258,
+          "affinity": 0.9640915474747203,
+          "properties": {
+            "description": "Eclectic displays of contemporary art by British and international emerging and established artists in Shoreditch's Brick Lane cultural district.",
+            "short_description": "Eclectic displays of contemporary art by British and international emerging and established artists in Shoreditch's Brick Lane cultural district."
+          }
+        },
+        {
+          "entity_id": "46967132-5419-41C3-A77B-32ADFE095DB4",
+          "name": "White Cube Bermondsey",
+          "type": "urn:entity",
+          "subtype": "urn:entity:place",
+          "popularity": 0.9982925974916989,
+          "affinity": 0.9635213150930668,
+          "properties": {
+            "description": "Groundbreaking contemporary art gallery in a renovated 1970s Bermondsey building, presenting international artists and rotating exhibitions.",
+            "short_description": "Groundbreaking contemporary art gallery in a renovated 1970s Bermondsey building, presenting international artists and rotating exhibitions."
+          }
+        },
+        {
+          "entity_id": "497AF03F-4E18-4B9B-B887-1DDDF7F0C30E",
+          "name": "Hunterian Museum",
+          "type": "urn:entity",
+          "subtype": "urn:entity:place",
+          "popularity": 0.9661461438482435,
+          "affinity": 0.9633360539743436,
+          "properties": {
+            "description": "Macabre collection showcasing the history of surgery with preserved specimens, surgical instruments and anatomical displays housed within a historic surgical college.",
+            "short_description": "Macabre collection showcasing the history of surgery with preserved specimens, surgical instruments and anatomical displays housed within a historic surgical college."
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-evidence-carry-brands",
+      "projectId": "case-rill-daypack-20261024",
+      "source": "Qloo official workflow",
+      "synthetic": false,
+      "queriedAt": "2026-10-24T03:11:13.673Z",
+      "boundary": "Cultural associations do not prove individual behavior, causal effects, colors, materials, budget, rights clearance, or partner availability.",
+      "relevant": null,
+      "requestRef": null,
+      "query": {
+        "workflow": "recommend",
+        "designQuestion": "Which cultural signals could change how people participate and meet the product?",
+        "input": {
+          "target_type": "brand",
+          "signals": [
+            "5861FE97-122C-4A14-B5A6-0150B105D45F"
+          ],
+          "signal_location": "London, United Kingdom",
+          "limit": 10,
+          "explain": true
+        }
+      },
+      "context": {
+        "venue": "London; illustrative 80 square meters indoors. Exact venue and safety conditions are unconfirmed.",
+        "geographicFilter": "Not applied; venue text is not an applied geographic filter",
+        "referenceStatus": "Check the actual workflow resolution; no proxy brand was automatically confirmed"
+      },
+      "inputReferences": [
+        {
+          "id": "5861FE97-122C-4A14-B5A6-0150B105D45F",
+          "name": "Bonobo",
+          "type": "urn:entity:artist",
+          "match": "identifier",
+          "synthetic": false,
+          "note": "From the actual official workflow interpretation; client references are still not a verified audience profile"
+        }
+      ],
+      "returnedEntities": [
+        {
+          "entity_id": "9847B888-65A3-404C-82DB-80F37DB5DF59",
+          "name": "Sonos",
+          "type": "urn:entity",
+          "subtype": "urn:entity:brand",
+          "popularity": 0.9486108050380566,
+          "affinity": 0.9673849220966284,
+          "properties": {
+            "description": "Sonos is a premier consumer electronics company specializing in wireless multi-room audio systems that combine sophisticated design with professional-grade acoustic performance. Founded in 2002, the company transformed the home listening experience by enabling seamless music and sound synchronization across multiple rooms over Wi-Fi. Their product lineup includes smart speakers, soundbars, subwoofers, and headphones, all controlled through an integrated software ecosystem. The brand occupies a premium market position, appealing to tech-savvy homeowners and design enthusiasts who value both aesthetic simplicity and high-fidelity sound.",
+            "short_description": "Sonos is a brand specializing in wireless speakers and home sound systems known for best-in-class acoustics and innovative software."
+          }
+        },
+        {
+          "entity_id": "11EA72EF-3C12-44E7-AAD6-699560C23507",
+          "name": "Urbanears",
+          "type": "urn:entity",
+          "subtype": "urn:entity:brand",
+          "popularity": 0.6588208370768422,
+          "affinity": 0.9484690542383203,
+          "properties": {
+            "description": "Originating from Stockholm, this brand specializes in functional and stylish personal audio equipment. It combines high-quality sound engineering with a distinctively minimalist Scandinavian design language. By focusing on accessibility and sustainable practices, the brand appeals to modern, urban consumers who value the marriage of aesthetic form and everyday performance. Its products are widely recognized for their clean lines, tactile finishes, and user-centric approach to consumer electronics.",
+            "short_description": "Urbanears is a brand specializing in headphones and earbuds, known for wireless and wired audio products with a focus on sound quality and sustainability."
+          }
+        },
+        {
+          "entity_id": "854D6053-16C7-4A75-B69B-04179609B10B",
+          "name": "Bang & Olufsen",
+          "type": "urn:entity",
+          "subtype": "urn:entity:brand",
+          "popularity": 0.9329304470173416,
+          "affinity": 0.944966123393436,
+          "properties": {
+            "description": "Established in 1925 in Struer, Denmark, this company is a globally recognized leader in the luxury audio and video equipment market. It is defined by its unwavering commitment to combining superior acoustic performance with sculptural, minimalist design that complements sophisticated interior spaces. The brand serves an affluent global clientele who view their technology as an essential, high-performance element of their home decor. Throughout its history, the company has maintained its status as a paragon of Danish design, consistently pushing the boundaries of material engineering and sound technology.",
+            "short_description": "Bang & Olufsen is a global luxury lifestyle brand known for high-end headphones, speakers, and televisions with distinctive design and quality sound."
+          }
+        },
+        {
+          "entity_id": "8EA998B6-B9B0-4EF8-BFD3-7C1E3AFADF63",
+          "name": "Marshall Headphones",
+          "type": "urn:entity",
+          "subtype": "urn:entity:brand",
+          "popularity": 0.8073095895984134,
+          "affinity": 0.9440258033643547,
+          "properties": {
+            "description": "Known for its legacy in the professional music world, this brand brings a high-fidelity, stage-ready sound experience to consumer audio equipment. By channeling the grit and performance standards of legendary guitar amplifiers into headphones and speakers, it provides a unique aesthetic that appeals to music lovers and performers alike. The brand emphasizes the importance of grassroots music venues and continues to innovate through durable, performance-driven designs. Its market positioning balances high-end audio performance with a strong identity rooted in 60 years of musical history.",
+            "short_description": "Marshall Headphones is a brand offering headphones and portable speakers known for custom-tuned sound with roaring bass, smooth mids, and brilliant treble."
+          }
+        },
+        {
+          "entity_id": "75105C50-F33A-4507-BAB8-E15A2A9B4596",
+          "name": "Leica Camera",
+          "type": "urn:entity",
+          "subtype": "urn:entity:brand",
+          "popularity": 0.9875998033598345,
+          "affinity": 0.94241079915609,
+          "properties": {
+            "description": "Leica Camera is a legendary German manufacturer of optical instruments and cameras, synonymous with the evolution of 35mm photography. Founded in 1913, the brand has maintained a reputation for extreme precision engineering and timeless industrial design. It serves a global base of professional photographers and serious enthusiasts, occupying a luxury position in the market. The brand is deeply associated with the heritage of documentary photography and the pursuit of artistic excellence in image-making.",
+            "short_description": "Leica Camera is a German company renowned for high-quality cameras and photography products, celebrated for precision and craftsmanship."
+          }
+        },
+        {
+          "entity_id": "29D35818-60FF-4833-B2D7-7EB74E4633CF",
+          "name": "Herschel Supply Co",
+          "type": "urn:entity",
+          "subtype": "urn:entity:brand",
+          "popularity": 0.9864979403637844,
+          "affinity": 0.9383776679320252,
+          "properties": {
+            "description": "Founded in 2009 in Vancouver, the brand specializes in manufacturing functional, design-led backpacks, travel goods, and accessories. It is widely recognized for combining nostalgic heritage silhouettes with contemporary, clean aesthetics. Its products are geared towards students, professionals, and travelers who value utility and timeless style. The company operates primarily through direct-to-consumer and retail channels, maintaining a reputation for reliability in the everyday-carry market.",
+            "short_description": "Herschel Supply Co. is a design-driven brand specializing in high-quality backpacks, bags, travel goods, and accessories with smart storage solutions and a focus on seamless travel."
+          }
+        },
+        {
+          "entity_id": "407E7455-E02F-42B7-9B89-67AC0E3E1348",
+          "name": "Skagen",
+          "type": "urn:entity",
+          "subtype": "urn:entity:brand",
+          "popularity": 0.8913647844586462,
+          "affinity": 0.936764812802563,
+          "properties": {
+            "description": "Originally established in 1989, this accessory brand draws inspiration from the minimalist design culture of Denmark. It specializes in contemporary watches, jewelry, and leather goods that prioritize clean aesthetics and everyday utility. The brand targets design-minded individuals who appreciate modern, understated style. It maintains a strong mid-market presence by offering accessible, high-quality products that emphasize functional simplicity.",
+            "short_description": "Skagen is a Danish brand known for minimalist and sleek watches, jewelry, and smartwatches inspired by modern Scandinavian design."
+          }
+        },
+        {
+          "entity_id": "A5707876-D5A1-49F0-ABF9-A793EA7736D2",
+          "name": "Vice",
+          "type": "urn:entity",
+          "subtype": "urn:entity:brand",
+          "popularity": 0.9984912952823312,
+          "affinity": 0.9354054608316699,
+          "properties": {
+            "description": "Originally founded as a punk magazine in Montreal, the brand has evolved into a massive, multi-platform media entity focused on investigative journalism and cultural reportage. It distinguishes itself by prioritizing authentic, first-hand storytelling and unconventional perspectives that often challenge mainstream narratives. Through a mix of video, text, and digital media, it serves a global audience that values transparency and exploration of the world's most complex sociopolitical issues. The brand holds a unique position as both an established media powerhouse and a voice for the countercultural zeitgeist.",
+            "short_description": "VICE is a global media brand known for original journalism and content covering diverse cultural, social, and political topics, including its Spanish-language platform VICE en Español."
+          }
+        },
+        {
+          "entity_id": "AB3B8B05-FA18-481C-8C9A-A4B3F49051C2",
+          "name": "Bowers & Wilkins",
+          "type": "urn:entity",
+          "subtype": "urn:entity:brand",
+          "popularity": 0.8596650336492008,
+          "affinity": 0.9353743992913474,
+          "properties": {
+            "description": "Established in 1966, the company is a global leader in high-fidelity audio equipment known for its uncompromising commitment to sound quality and innovative acoustic engineering. The brand offers a wide range of premium loudspeakers, headphones, and custom installation systems that are favored by professional recording studios and discerning listeners alike. With a focus on precision, the company combines advanced material science with elegant design to create products that deliver an accurate and immersive audio experience. It serves as a benchmark for excellence in the consumer electronics space, maintaining a reputation for both technical innovation and enduring build quality.",
+            "short_description": "Bowers & Wilkins is a British company specializing in high-quality audio products including wireless speakers, headphones, and sound systems known for hi-fi sound and technological innovation."
+          }
+        },
+        {
+          "entity_id": "491B649E-3A7E-4E3B-B69D-090DC98E5D4C",
+          "name": "Bellroy",
+          "type": "urn:entity",
+          "subtype": "urn:entity:brand",
+          "popularity": 0.8767693376955806,
+          "affinity": 0.9353470908374009,
+          "properties": {
+            "description": "Bellroy is a design-obsessed accessories brand founded in 2010 that reimagined the everyday wallet by removing excess bulk. Headquartered in Melbourne, Australia, the brand has expanded its expertise into a wide range of travel bags, backpacks, and tech organizers. Committed to business as a force for good, the company utilizes recycled materials and sustainably sourced leather to create durable products. Their target audience includes professionals and travelers who value high-performance, minimalist aesthetics and environmental responsibility.",
+            "short_description": "Bellroy is an Australian design-focused brand known for slim, sustainable wallets, bags, phone cases, and travel accessories."
+          }
+        }
+      ]
+    }
+  ],
+  "revisions": [
+    {
+      "id": "case-accepted-fit-bench-v3",
+      "projectId": "case-rill-daypack-20261024",
+      "targetConceptId": "case-concept-fit-bench",
+      "status": "accepted",
+      "revisionNumber": 2,
+      "baseVersion": 2,
+      "confirmedVersion": 3,
+      "summary": "Draft 2 fixes the two flagged problems in the Fit Bench concept. It uses one timeline in every field, with identical stage boundaries: briefing 0–1.5, measure and set straps 1.5–3, reading 1 standing 3–4.5, walk to the stop marker 4.5–7, walk halted for the single one-variable adjustment and reading 2 7–9, walk resumed to the bench 9–10.5, reading 3 10.5–12, writing the fit card 12–14, and a one-minute handover buffer that ends at 15 at the latest. No strap is touched while the visitor is moving: the visitor stops in a taped safety box off the loop, the fitter makes one recorded change, reading 2 is taken standing still, and the visitor then resumes. The privacy format, three readings, the single locked title and the brief constraints are unchanged. Feasibility, the minute split and the learning value are still marked unverified. Concept A is untouched, no Qloo query was made, and no evidence link was changed.",
+      "impact": [
+        "Only the selected concept Fit Bench changes; concept A (Load Line), the brief and all evidence links are untouched.",
+        "The locked title is preserved and not submitted as an edit.",
+        "The private one-fitter, one-visitor, one-pack format, the no-registration and no-contact-details rule, and the three readings are preserved.",
+        "Mechanism and journey now share identical minute boundaries: 0–1.5 briefing, 1.5–3 measure and set straps, 3–4.5 reading 1, 4.5–7 walk to the stop marker, 7–9 stopped adjustment and reading 2, 9–10.5 walk to the bench, 10.5–12 reading 3 and load check, 12–14 write the fit card, 14–15 handover and buffer.",
+        "The strap change and reading 2 now happen with the visitor standing still inside a taped safety box off the loop; the earlier 'without stopping the walk' wording is removed from the claim, mechanism, journey, touchpoints and effects.",
+        "The fit card is now written inside the timeline rather than left to the visitor afterwards.",
+        "Removing the waiting bench and the longer walk frees floor space but removes the in-session buffer for arrivals.",
+        "No Qloo query was made and no evidence was added, removed or revalidated."
+      ],
+      "unknowns": [
+        "Whether the planning minute split holds inside 15 minutes from arrival to departure with an unfamiliar pack is unverified.",
+        "Whether one strap change and reading 2 can be completed in two minutes at the stop marker without the visitor or another visitor crossing the stop zone is untested.",
+        "Whether the shorter, interrupted carry still teaches fit and carrying comfort as well as a longer session is untested.",
+        "Whether 15 minutes per fitter helps or hurts afternoon throughput, and how the room absorbs arrivals with no waiting bench and no booking, is unknown.",
+        "Rill's fictional pack adjustment range and whether the taped safety box and stop marker can be placed without obstructing entry or an emergency route are unconfirmed.",
+        "Venue, supervision, insurance, floor taping and safety conditions remain unconfirmed."
+      ],
+      "createdAt": "2026-10-24T03:27:31.855Z",
+      "decidedAt": "2026-10-24T03:29:25.019Z",
+      "changes": [
+        {
+          "field": "coreClaim",
+          "before": "The try-on is taught as measurement on the visitor's own body: one fitter, one pack, three timed comfort readings and a recorded strap position, with no public comparison and nothing performed for a crowd.",
+          "after": "The try-on is taught as measurement on the visitor's own body inside a 15-minute maximum from arrival to departure: one fitter, one pack, three comfort readings and one recorded strap change, taken in a single private carry that pauses once at a safe stop for the adjustment and never asks the visitor to queue, register or perform for a crowd.",
+          "reason": "The claim must drop the earlier 'continuous carry' wording, which contradicted the required walking pause, and state the single safe stop where the one change and reading 2 happen.",
+          "evidenceRefs": [
+            {
+              "entityId": "491B649E-3A7E-4E3B-B69D-090DC98E5D4C",
+              "observedField": "properties.description",
+              "observedValue": "Bellroy is a design-obsessed accessories brand founded in 2010 that reimagined the everyday wallet by removing excess bulk. Headquartered in Melbourne, Australia, the brand has expanded its expertise into a wide range of travel bags, backpacks, and tech organizers. Committed to business as a force for good, the company utilizes recycled materials and sustainably sourced leather to create durable products. Their target audience includes professionals and travelers who value high-performance, minimalist aesthetics and environmental responsibility.",
+              "observation": "Returned properties.description = \"Bellroy is a design-obsessed accessories brand founded in 2010 that reimagined the everyday wallet by removing excess bulk. Headquartered in Melbourne, Australia, the brand has expanded its expertise into a wide range of travel bags, backpacks, and tech organizers. Committed to business as a force for good, the company utilizes recycled materials and sustainably sourced leather to create durable products. Their target audience includes professionals and travelers who value high-performance, minimalist aesthetics and environmental responsibility.\". This is an entity description, not a cultural affinity score or evidence of audience effect.",
+              "inspiration": "Design inference: because the description frames this category around performance and considered reduction, the try-on is built as recorded evidence (three readings with one variable changed at a time) rather than a first impression. Not a claim about Rill or Bellroy customers.",
+              "basis": "description",
+              "evidenceId": "case-evidence-carry-brands"
+            }
+          ]
+        },
+        {
+          "field": "mechanism",
+          "before": {
+            "description": "The 80 square metres is arranged as one open but quiet route with no public board and no parallel stations: a two-seat waiting bench, a measurement wall with height strip and torso-length gauge, and a low fitting bench holding one pack at a time plus a standardised day kit whose contents the visitor can add to or remove. A single fitter takes the visitor through measurement, loading, first readings at the bench, a solo 20-metre loop walk at minute 15, and second and third readings on return, changing one variable at a time. The try-on is conversational, private and slow; no contact details are collected or retained, and the only record is a handwritten fit card.",
+            "organization": "Private one-to-one try-on bench with a 30-minute timed carry"
+          },
+          "after": {
+            "description": "The 80 square metres is arranged as one private route with no waiting area and no public board: a ready bench holding one pack pre-set to a mid-range torso strap plus one pre-counted day kit (laptop sleeve, bottle, jacket, lunch) laid out flat; a measurement spot on the wall with a height strip and torso-length gauge; a taped safety box that lies off the 20-metre indoor loop, with a stop marker in front of it; and a marked halfway point on the loop. A single fitter runs one visitor through a 15-minute maximum, timed from the moment the visitor steps in and using one timeline throughout. Minutes 0–1.5: briefing, no registration and no obligation to continue, plus confirmation that the visitor may stop at any point. Minutes 1.5–3: torso length and shoulder width measured at the wall and written on the blank fit card, and the pack's torso strap and sternum strap set once and marked in tape. Minutes 3–4.5: the visitor stands still with the loaded pack and the fitter takes reading 1 against named contact points. Minutes 4.5–7: the visitor walks the loop alone at their own pace to the stop marker. Minutes 7–9: the visitor stops still inside the taped safety box, off the loop; the fitter changes exactly one variable (sternum strap position or torso strap length, written down), takes reading 2 standing still, and no strap is touched while the visitor is walking. Minutes 9–10.5: the visitor resumes and walks the remaining loop back to the bench. Minutes 10.5–12: reading 3 standing at the bench, and the visitor adds or removes one item at a time to match their own typical day. Minutes 12–14: the fitter writes the fit card in front of the visitor (measured torso length, the one change, all three readings, the visitor's notes). Minutes 14–15: handover and questions, with one minute of buffer so the session ends by 15 at the latest and can end earlier at any point. The try-on stays conversational and private; no contact details are collected or retained, and the only record is the handwritten card the visitor keeps.",
+            "organization": "Private one-to-one try-on bench with a 15-minute maximum session and one safe walking stop"
+          },
+          "reason": "The mechanism now carries the same minute boundaries as the journey, adds time to write the fit card, and moves the one-variable adjustment and reading 2 into a standing stop inside the taped safety box instead of an adjustment taken during movement.",
+          "evidenceRefs": [
+            {
+              "entityId": "491B649E-3A7E-4E3B-B69D-090DC98E5D4C",
+              "observedField": "properties.description",
+              "observedValue": "Bellroy is a design-obsessed accessories brand founded in 2010 that reimagined the everyday wallet by removing excess bulk. Headquartered in Melbourne, Australia, the brand has expanded its expertise into a wide range of travel bags, backpacks, and tech organizers. Committed to business as a force for good, the company utilizes recycled materials and sustainably sourced leather to create durable products. Their target audience includes professionals and travelers who value high-performance, minimalist aesthetics and environmental responsibility.",
+              "observation": "Returned properties.description = \"Bellroy is a design-obsessed accessories brand founded in 2010 that reimagined the everyday wallet by removing excess bulk. Headquartered in Melbourne, Australia, the brand has expanded its expertise into a wide range of travel bags, backpacks, and tech organizers. Committed to business as a force for good, the company utilizes recycled materials and sustainably sourced leather to create durable products. Their target audience includes professionals and travelers who value high-performance, minimalist aesthetics and environmental responsibility.\". This is an entity description, not a cultural affinity score or evidence of audience effect.",
+              "inspiration": "Design inference: a description of considered reduction supports a short session that strips waiting out and changes one variable at a time, with each change recorded. Not a claim about Rill's product or its visitors.",
+              "basis": "description",
+              "evidenceId": "case-evidence-carry-brands"
+            },
+            {
+              "entityId": "29D35818-60FF-4833-B2D7-7EB74E4633CF",
+              "observedField": "properties.description",
+              "observedValue": "Founded in 2009 in Vancouver, the brand specializes in manufacturing functional, design-led backpacks, travel goods, and accessories. It is widely recognized for combining nostalgic heritage silhouettes with contemporary, clean aesthetics. Its products are geared towards students, professionals, and travelers who value utility and timeless style. The company operates primarily through direct-to-consumer and retail channels, maintaining a reputation for reliability in the everyday-carry market.",
+              "observation": "Returned properties.description = \"Founded in 2009 in Vancouver, the brand specializes in manufacturing functional, design-led backpacks, travel goods, and accessories. It is widely recognized for combining nostalgic heritage silhouettes with contemporary, clean aesthetics. Its products are geared towards students, professionals, and travelers who value utility and timeless style. The company operates primarily through direct-to-consumer and retail channels, maintaining a reputation for reliability in the everyday-carry market.\". This is an entity description, not a cultural affinity score or evidence of audience effect.",
+              "inspiration": "Design inference: a pre-counted everyday kit lets a compressed session still reflect a typical day, because the load is prepared before the visitor arrives instead of being assembled in the room.",
+              "basis": "description",
+              "evidenceId": "case-evidence-carry-brands"
+            },
+            {
+              "entityId": "7904670F-7C52-48EF-B9D8-2420A7175C61",
+              "observedField": "properties.description",
+              "observedValue": "Zaha Hadid–designed showroom and cultural space showcasing Roca bathroom products, hosting exhibitions, events and professional meetings in a sculpted, water-inspired interior.",
+              "observation": "Returned properties.description = \"Zaha Hadid–designed showroom and cultural space showcasing Roca bathroom products, hosting exhibitions, events and professional meetings in a sculpted, water-inspired interior.\". This is an entity description, not a cultural affinity score or evidence of audience effect.",
+              "inspiration": "Room-logic inference only: a single continuous marked route inside one interior lets a private one-to-one try-on fit 80 square metres without a public board or a second room, and a stop point can sit off that route. No association with Roca or this gallery is claimed, available or confirmed.",
+              "basis": "description",
+              "evidenceId": "case-evidence-london-places"
+            }
+          ]
+        },
+        {
+          "field": "journey",
+          "before": [
+            {
+              "action": "Visitor takes one of two waiting seats and the fitter explains that this is a 30-minute, single-visitor try-on with no registration and no obligation to continue.",
+              "stage": "Wait and brief"
+            },
+            {
+              "action": "Fitter measures torso length and shoulder width at the wall gauge and writes the numbers on a blank fit card, visible to the visitor throughout.",
+              "stage": "Measure"
+            },
+            {
+              "action": "Visitor chooses what goes in the pack from a standard day kit (laptop sleeve, water bottle, jacket, lunch) and adds or removes items to match their own typical day.",
+              "stage": "Load the day kit"
+            },
+            {
+              "action": "Visitor sits and stands at the bench wearing the pack, and the fitter records the first comfort reading against named contact points rather than a single score.",
+              "stage": "First reading"
+            },
+            {
+              "action": "Visitor walks a 20-metre indoor loop alone for around ten minutes, then returns, so nobody is watching or timing them for an audience.",
+              "stage": "Solo loop"
+            },
+            {
+              "action": "Fitter takes two further readings and changes only the torso strap position, or only the sternum strap, so the visitor feels one cause at a time.",
+              "stage": "Second and third readings, one adjustment"
+            },
+            {
+              "action": "Visitor leaves with the handwritten card: measured torso length, the strap settings that read most comfortable, and their own notes, with no contact details kept.",
+              "stage": "Take the fit card"
+            }
+          ],
+          "after": [
+            {
+              "action": "Visitor steps straight onto the start point with no queuing; the fitter states that this is a 15-minute maximum, single-visitor try-on with no registration, no contact details and no obligation to continue, and that the visitor may stop at any time.",
+              "stage": "Briefing (min 0–1.5)"
+            },
+            {
+              "action": "Fitter measures torso length and shoulder width at the wall gauge, writes the numbers on the blank fit card in view of the visitor, and sets the pre-fitted pack's torso strap and sternum strap once, marking both in tape.",
+              "stage": "Measure and set straps (min 1.5–3)"
+            },
+            {
+              "action": "Visitor stands still at the bench with the pack loaded with the pre-counted standard day kit, and the fitter takes comfort reading 1 against named contact points.",
+              "stage": "Reading 1, standing (min 3–4.5)"
+            },
+            {
+              "action": "Visitor walks the marked 20-metre loop alone at their own pace and comes to a full stop at the stop marker in front of the taped safety box, off the route.",
+              "stage": "Walk to the stop marker (min 4.5–7)"
+            },
+            {
+              "action": "Visitor stays rooted inside the safety box; the fitter changes exactly one variable — sternum strap position or torso strap length — writes it on the card, and takes reading 2 standing still. No strap is touched while the visitor is moving.",
+              "stage": "Stopped: single adjustment and reading 2 (min 7–9)"
+            },
+            {
+              "action": "Visitor resumes walking and completes the remaining loop back to the bench.",
+              "stage": "Resume walk to the bench (min 9–10.5)"
+            },
+            {
+              "action": "Fitter takes reading 3 standing at the bench and the visitor adds or removes one item at a time from the day kit to match their own typical day.",
+              "stage": "Reading 3 and load check (min 10.5–12)"
+            },
+            {
+              "action": "Fitter writes the fit card in front of the visitor: measured torso length, the one recorded change, all three readings and the visitor's own notes. No contact details are kept.",
+              "stage": "Write the fit card (min 12–14)"
+            },
+            {
+              "action": "Visitor takes the handwritten card and the fitter answers remaining questions; one minute of buffer means the session ends by 15 at the latest and may end earlier at any point.",
+              "stage": "Handover and buffer (min 14–15 ceiling)"
+            }
+          ],
+          "reason": "The journey stages now carry exactly the minute boundaries used in the mechanism, include a dedicated stage for writing the fit card, and show the walk being halted safely for the single adjustment and reading 2 before resuming.",
+          "evidenceRefs": []
+        },
+        {
+          "field": "productTouchpoints",
+          "before": [
+            "Measurement wall with height strip and torso-length gauge",
+            "Low fitting bench holding one pack at a time",
+            "Standardised day kit with swappable contents",
+            "Blank handwritten fit card used live in front of the visitor",
+            "Contact-point diagram the fitter uses to name readings",
+            "One-variable adjustment kit for strap length and sternum position",
+            "Two-seat waiting bench and a no-registration session card"
+          ],
+          "after": [
+            "Measurement wall with height strip and torso-length gauge",
+            "Low fitting bench holding one pre-fitted pack at a time",
+            "Pre-counted standard day kit laid out flat, adjusted one item at a time",
+            "Tape markers on torso strap and sternum strap, re-set once while the visitor stands still",
+            "Floor-marked 20-metre loop with a stop marker in front of a taped safety box set off the route",
+            "Contact-point diagram the fitter uses to name readings, shown to the visitor at each standing reading",
+            "Blank handwritten fit card written up in front of the visitor in the last minutes of the session"
+          ],
+          "reason": "Touchpoints must match the revised sequence: the adjustment happens at a floor stop marker and taped safety box off the loop rather than mid-walk, and the fit card is written inside the timeline.",
+          "evidenceRefs": []
+        },
+        {
+          "field": "openQuestions",
+          "before": [
+            "Whether a 30-minute single-visitor try-on per fitter fits an afternoon flow is unknown; how many fitters are needed, and how the room absorbs a queue without turning the bench into a public spectacle, is unresolved.",
+            "The seated-and-standing reading protocol and named contact points are a designer's proposal, not a validated fit method; they need checking against how Rill's samples actually adjust.",
+            "The fictional packs' adjustment range may not cover real torso-length variation, which would quietly exclude visitors instead of teaching them anything.",
+            "Exact venue, insurance, floor loading and any furniture fixing or safety conditions are unconfirmed.",
+            "Whether visitors accept a no-data, handwritten-record try-on rather than a digital one has not been tested."
+          ],
+          "after": [
+            "Whether the minute split from briefing to handover can actually be held inside 15 minutes with an unfamiliar pack is unverified; it is a planning estimate, not a rehearsed schedule.",
+            "Whether the fitter can make one strap change and take reading 2 at the stop marker, inside the taped safety box, in two minutes without the visitor leaving it or another visitor walking into the stop zone is untested.",
+            "Whether a short measurement and a 1.5-minute briefing is enough for a first-time visitor to give an informed reading is untested.",
+            "The packs are fictional and unspecified: strap geometry, torso-length range and pack weights must be checked against real samples, and whether the halfway stop marker and safety box can be placed without blocking the entrance or an emergency route is unconfirmed.",
+            "What the room does with a visitor arriving while a session is running is unresolved, since the waiting bench has been removed and there is no booking or queue system.",
+            "The three reading protocols and the named contact points are a designer's proposal, not a validated fit method, and the shorter timing could make them less reliable.",
+            "Exact venue, insurance, floor loading, floor taping or fixing and any supervision or safety conditions are unconfirmed.",
+            "Whether visitors accept a no-data, handwritten-record try-on rather than a digital one has not been tested."
+          ],
+          "reason": "The timing questions must describe the 15-minute split and the stopped adjustment at the safety box, and add the new question of whether that stop zone is safe and unobstructed; the unaffected venue and no-data questions are kept.",
+          "evidenceRefs": []
+        },
+        {
+          "field": "unverifiedEffects",
+          "before": [
+            "That three timed readings produce a more accurate comfort judgment than one unloaded try-on is an assumption; no comfort, fit-accuracy or learning effect was measured.",
+            "No claim is made about dwell time, conversion, trust, recall or repeat visits, and none of these were returned by the saved evidence.",
+            "That private one-to-one attention suits this audience better than a public circuit is a design argument, not an observed preference; the Bonobo association says nothing about it.",
+            "No relationship between this concept and Bonobo, its listeners, or the returned brands' customers has been established."
+          ],
+          "after": [
+            "That three readings compressed into a 15-minute maximum still produce an accurate comfort judgment is an assumption; no comfort, fit-accuracy or learning effect was measured, and the shorter timing may reduce it.",
+            "That one mid-walk stop, with a single strap change made while the visitor stands still, is enough to let a visitor separate the effect of that change from the effect of resuming walking is untested.",
+            "Whether stopping and resuming breaks the rhythm of the carry and weakens the comparison, or makes the change easier to notice, is unknown.",
+            "Whether 15 minutes per fitter works as an afternoon throughput or becomes a bottleneck is unknown; the shorter session may serve more visitors or may simply compress the experience, and no attendance figure has been estimated or measured.",
+            "That removing the waiting bench and the longer walk preserves the private, unhurried quality of the one-to-one try-on is a design argument, not an observed preference.",
+            "No claim is made about dwell time, conversion, trust, recall or repeat visits, and none of these were returned by the saved evidence.",
+            "No relationship between this concept and Bonobo, its listeners, or the returned brands' customers has been established."
+          ],
+          "reason": "The effects list must drop the earlier implication of one continuous adjustment and instead mark the stopped adjustment, the effect of stopping and resuming, and the compressed schedule as unverified.",
+          "evidenceRefs": []
+        }
+      ]
+    }
+  ],
+  "versionHistory": [
+    {
+      "version": 2,
+      "confirmedAt": "2026-10-24T03:24:15.909Z"
+    },
+    {
+      "version": 3,
+      "confirmedAt": "2026-10-24T03:29:25.019Z",
+      "revisionId": "case-accepted-fit-bench-v3"
+    }
+  ]
+}

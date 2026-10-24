@@ -235,7 +235,7 @@ export function assembleContext(messages, snapshot, message, priorResearch = [])
     const results = messages.slice(assistantIndex + 1).filter(item => item.role === 'toolResult');
     if (new Set(calls.map(call => call.id)).size !== calls.length || results.length !== calls.length
       || !calls.every(call => results.filter(result => result.toolCallId === call.id).length === 1))
-      throw Object.assign(new Error('当前工具调用与结果不完整、重复或未配对；保留会话并停止模型请求。'), { code: 'MODEL_CONTEXT_PROTOCOL_INCOMPLETE' });
+      throw Object.assign(new Error('The current tool calls and results are incomplete, duplicated or unpaired. The session was kept and model requests stopped.'), { code: 'MODEL_CONTEXT_PROTOCOL_INCOMPLETE' });
     {
       // Usage belongs to the former prefix, not this rebuilt view. Content is opaque.
       const copy = { ...assistant, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
@@ -243,7 +243,7 @@ export function assembleContext(messages, snapshot, message, priorResearch = [])
       recent.push(copy, ...results.filter(result => calls.some(call => call.id === result.toolCallId)));
     }
   } else if (messages.slice(messages.findLastIndex(item => item.role === 'user') + 1).some(item => item.role === 'toolResult')) {
-    throw Object.assign(new Error('当前工具结果没有对应调用；保留会话并停止模型请求。'), { code: 'MODEL_CONTEXT_PROTOCOL_INCOMPLETE' });
+    throw Object.assign(new Error('The current tool result has no matching call. The session was kept and model requests stopped.'), { code: 'MODEL_CONTEXT_PROTOCOL_INCOMPLETE' });
   }
   const reads = evidenceReads(messages, snapshot, messages.findLastIndex(item => item.role === 'user'), recent);
   if (reads) snapshot = { ...snapshot, evidenceReads: reads };

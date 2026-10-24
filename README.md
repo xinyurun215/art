@@ -1,24 +1,32 @@
-# Brand pop-up experience design agent
+# TasteStage
 
-For experience designers and creative planners on small teams. It turns a client brief and cultural research into an early brand pop-up proposal that can be discussed, edited, and traced. The formal product name is not decided.
+Experience workspace · Brand pop-up design
 
-What is saved now is a stage implementation: the official runtime, the workspace, partial revision and review, field locks, Markdown export, and a Vercel + Postgres deployment adapter. **The complete product has not passed acceptance.** The default offline demo uses a simulated model and synthetic fixtures. It does not mean a live model succeeded.
+For experience designers and creative planners on small teams. TasteStage turns a client brief and cultural research into an early brand pop-up proposal that can be discussed, edited, and traced. A limited public name search found no obvious same-category conflict; name exclusivity and trademark availability are not established.
+
+What is saved now is a stage implementation: the official runtime, the workspace, partial revision and review, field locks, Markdown export, and a Vercel + Postgres deployment adapter. **The complete product has not passed acceptance.** Production uses live generation; synthetic tools are limited to development and testing. A service failure does not switch to a preset proposal.
 
 Product scope is [PRODUCT.md](docs/PRODUCT.md). A short validation record is [VALIDATION.md](docs/VALIDATION.md). Deployment notes are [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-## Online demo
+## Production use
+
+Release verification and remaining acceptance limits are recorded in [RELEASE.md](docs/RELEASE.md). Deployment readiness alone does not establish live-flow or visual acceptance.
 
 Public address: [art-lovat-two.vercel.app](https://art-lovat-two.vercel.app/). No login.
 
-1. Choose **Complete brief** to load a synthetic request, keep **Demo · synthetic data**, and choose **Start research**. Two concepts with different ways of participating appear.
-2. Select a concept. You can lock fields, then propose a change. The change becomes a pending draft. It is written into the confirmed version only after you accept it.
-3. Refreshing restores confirmed content and any pending draft. **Export proposal** downloads a Markdown proposal pack.
+1. Write your own brief and choose **Start research**. The project identity is saved before generation starts; no mode selection is needed in production.
+2. Compare the saved cultural evidence, proposal judgments, visitor actions, and product experience. Select a concept, lock confirmed fields, and propose a change. It becomes a pending draft and changes the confirmed version only after you accept it.
+3. **Export proposal** downloads a Markdown pack. Refreshing or reopening the saved project restores its confirmed content and any pending draft without automatically generating again.
 
-Projects are isolated by browser. A `?project=` link opens only in the browser that created it. Share the home address. **Live research · model + Qloo** makes real requests, within the per-project request cap.
+**View completed case** opens a separate read-only recording when a verified snapshot is available. Its date, real data source, fictional brief, and limitations must be explicit. It is not a live generation or a fallback for failed research. **Create your own project** returns to the independent creation flow.
+
+Projects are isolated by browser. A `?project=` link opens only in the browser that created it. Share the home address. Production research makes real model and Qloo requests within the existing per-project caps. Old synthetic projects can still be read/exported, but cannot be modified or generated in production. Development controls remain available in local development and protected previews.
 
 The agent is instructed to write proposals, questions, and revisions in English.
 
-## Current validation
+## Earlier validation (historical)
+
+The minimal repairs and productization are summarized in [the release record](docs/RELEASE.md). The records below are historical and do not establish acceptance of the release revision.
 
 | Layer | Current conclusion |
 | --- | --- |
@@ -28,7 +36,7 @@ The agent is instructed to write proposals, questions, and revisions in English.
 | Live model proposal | A later isolated project reused saved evidence. Official DeepSeek `deepseek-flash` was rejected twice, then submitted two concepts on the third try, passed the real executor, and showed them on a local page. That round made 0 new Qloo requests |
 | Full online research loop and product effect | Not passed. A proposal path that reuses evidence is not a full online research loop, a claim of stable first-try success, or a test of design effect |
 
-Real responses, raw sessions, runtime state, Qloo material that is not cleared for publication, and local screenshots stay on the machine. They are not published with the repository. Cultural fixtures in the public source are marked synthetic.
+Raw responses, private sessions, runtime state, unapproved Qloo material and local screenshots stay on the machine. `fixtures/culture-signals.json` is marked Synthetic. The separate `fixtures/completed-case.json` is a privacy-reduced recording of the new real run on 2026-10-24, using a fictional Rill brief, two Qloo recommendation cards and an accepted revision. It is read only and retains explicit source and effect boundaries.
 
 ## Local use
 

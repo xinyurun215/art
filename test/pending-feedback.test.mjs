@@ -66,11 +66,11 @@ test('feedback delta merges prior draft changes, records lineage and accepts exa
   assert.deepEqual(next.changes.find(item => item.field === 'mechanism').before, confirmed[0].mechanism);
   const shown = pendingRevisionDraft(project, next);
   assert.deepEqual(shown, { ...oldDraft, mechanism: correctedMechanism() });
-  for (const decision of ['accept', 'reject']) assert.throws(() => decideRevision(project, pending.id, decision, { baseVersion: 1 }), /已处理/);
+  for (const decision of ['accept', 'reject']) assert.throws(() => decideRevision(project, pending.id, decision, { baseVersion: 1 }), /already been decided/);
   decideRevision(project, next.id, 'accept', { baseVersion: 1 });
   assert.equal(project.version, 2); assert.deepEqual(project.concepts[0], shown); assert.deepEqual(project.concepts[1], confirmed[1]);
   assert.equal(project.versionHistory.at(-1).revisionId, next.id);
-  assert.throws(() => decideRevision(project, next.id, 'accept', { baseVersion: 2 }), /已处理/);
+  assert.throws(() => decideRevision(project, next.id, 'accept', { baseVersion: 2 }), /already been decided/);
 });
 
 test('feedback may revert one earlier field while retaining other prior draft changes', () => {
@@ -87,7 +87,7 @@ test('clarification, conflict and failed feedback preserve source draft and keep
     const { project, pending } = projectWithDraft(); const old = structuredClone(pending); const confirmed = structuredClone(project.concepts);
     const request = startFeedback(project, pending);
     if (phase === 'error') {
-      assert.throws(() => proposeRevision(project, { ...response([change('selectedConceptId', 'b')]), requestId: request.id }), /不允许修改/);
+      assert.throws(() => proposeRevision(project, { ...response([change('selectedConceptId', 'b')]), requestId: request.id }), /field is forbidden/);
       finishRevisionRequest(project, request, 'error', '合成模型失败；原稿保留');
     } else proposeRevision(project, { requestId: request.id, phase, summary: '需要确认参与条件', question: '参与者是否同时到场？',
       changes: [], impact: [], unknowns: ['参与条件未知'] });

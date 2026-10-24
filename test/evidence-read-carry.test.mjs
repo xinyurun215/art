@@ -132,7 +132,8 @@ test('carried values stay model views and cannot replace authoritative proposal 
   const carried = entries(assembleContext(messages, snapshot(source)))[0];
   const proposal = value => ({ projectId: source.id, baseVersion: source.version, phase: 'ready', summary: 'Synthetic local proposal test',
     concepts: ['one', 'two'].map(id => ({ id, title: id, coreClaim: 'Touch the synthetic product',
-      mechanism: { organization: id, description: 'Touch the synthetic product' },
+      mechanism: { organization: id, description: id === 'one'
+        ? 'A scheduled group touches the synthetic product together' : 'Each visitor independently chooses a synthetic product task' },
       journey: ['arrive', 'participate', 'leave'].map(stage => ({ stage, action: 'Touch the synthetic product' })),
       productTouchpoints: ['Touch the synthetic product'], openQuestions: [], unverifiedEffects: ['Unverified effects'],
       evidenceLinks: [{ evidenceId: carried.evidenceId, entityId: carried.entityId, observedField: carried.field, observedValue: value,

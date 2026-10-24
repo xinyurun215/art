@@ -188,7 +188,8 @@ test('every mocked live send stays bounded through giant Qloo, exact read and pr
         observedField: sends.length === 3 ? 'properties.absent' : 'properties.description',
         observedValue: raw.results[1].properties.description, observation: 'Synthetic exact field', inspiration: 'Synthetic design inference; effects unknown' };
       args = { baseVersion: project.version, phase: 'ready', summary: 'Synthetic bounded proposal', concepts: ['a', 'b'].map(id => ({ id, title: id,
-        coreClaim: '触摸样本并记录观察', mechanism: { organization: id, description: '触摸样本并记录观察' },
+        coreClaim: '触摸样本并记录观察', mechanism: { organization: id, description: id === 'a'
+          ? '小组按固定轮次触摸样本并互相记录观察' : '个人自选顺序触摸样本并独立记录观察' },
         journey: ['到场', '参与', '带走'].map(stage => ({ stage, action: '触摸样本并记录观察' })), productTouchpoints: ['触摸样本'],
         evidenceLinks: [link], openQuestions: ['容量未知'], unverifiedEffects: ['效果未知'] })) };
     }
@@ -286,7 +287,8 @@ async function contractRecovery(t, mode = 'proposal', condition = 'accept') {
     let name = 'propose_design_response';
     let args = { baseVersion: project.version, phase: 'ready', summary: 'Synthetic contract candidate', questions: [],
       concepts: ['a', 'b'].map(id => ({ id: `synthetic-${id}`, title: id, coreClaim: '触摸样本并记录观察',
-        mechanism: { organization: `synthetic-${id}`, description: '触摸样本后记录自己的观察' },
+        mechanism: { organization: `synthetic-${id}`, description: id === 'a'
+          ? '小组按固定轮次触摸样本并互相记录观察' : '个人自选顺序触摸样本并独立记录观察' },
         journey: ['到场', '参与', '带走'].map(stage => ({ stage, action: '触摸样本并记录观察' })),
         productTouchpoints: ['触摸样本'], evidenceLinks: [link], openQuestions: ['条件待验证'], unverifiedEffects: ['效果未验证'] })) };
     if (mode === 'revision') {

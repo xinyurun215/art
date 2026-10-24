@@ -69,6 +69,37 @@ test('ready proposal accepts omitted or empty questions through official dispatc
   }
 });
 
+test('changing organization and other labels cannot disguise identical participation, journey and product contact', async () => {
+  for (const reorderJourneyKeys of [false, true]) {
+    const { project, observed } = await dispatch(p => {
+      const input = readyProposal(p, []), first = input.concepts[0];
+      input.concepts[1] = { ...structuredClone(first), id: 'another-id', title: 'Another title', coreClaim: 'Another claim',
+        mechanism: { ...first.mechanism, organization: 'a_different_label' },
+        ...(reorderJourneyKeys ? { journey: first.journey.map(step => ({ action: step.action, stage: step.stage })) } : {}) };
+      return input;
+    }, withEvidence());
+    assert.equal(project.version, 1, 'a rejected duplicate must not update the board');
+    assert.equal(project.concepts.length, 0);
+    assert.equal(observed.feedback.code, 'MECHANISMS_NOT_DISTINCT');
+    assert.equal(observed.feedback.path, '/concepts');
+    assert.match(observed.feedback.reason, /distinct participation/i);
+  }
+});
+
+test('different group and self-paced mechanisms still pass the deterministic duplicate check', async () => {
+  const { project } = await dispatch(p => {
+    const input = readyProposal(p, []);
+    input.concepts[0].mechanism.description = 'A scheduled group moves together and rotates through a staff-guided try-on.';
+    input.concepts[1].mechanism.description = 'Each visitor independently chooses a task order and unlocks a story through their try-on notes.';
+    input.concepts[1].journey[1].action = 'Choose a task alone and use the try-on note to unlock the next station';
+    input.concepts[1].productTouchpoints = ['Individual try-on and personal product notes'];
+    return input;
+  }, withEvidence());
+  assert.equal(project.status.phase, 'ready');
+  assert.equal(project.version, 2);
+  assert.equal(project.concepts.length, 2);
+});
+
 test('forged evidence reference is rejected without changing project', async () => {
   const { project, observed } = await dispatch(p => {
     const input = readyProposal(p, []);

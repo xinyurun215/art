@@ -7,6 +7,7 @@ import { join, resolve, sep } from 'node:path';
 import { createAppServer } from '../app/server.mjs';
 import { applyProposal, createProject, validateProposal } from '../app/state.mjs';
 import { createProductRuntime } from '../app/runtime.mjs';
+import { createAndStart } from './project-http.mjs';
 
 const original = '  上海快闪；预算20万元以内；必须保留试穿；禁止现场演出；文化参考仅作研究信号。\n';
 const brief = { request: original, venue: '上海室内150平方米', budget: '20万元以内',
@@ -52,7 +53,7 @@ test('actual save/restart/model path keeps verbatim request, consecutive Q/A, co
     if (id) { const directory = resolve('.art-runtime', id); assert(directory.startsWith(resolve('.art-runtime') + sep)); rmSync(directory, { recursive: true, force: true }); }
     assert(dataDir.startsWith(join(tmpdir(), 'art-clarification-save-'))); rmSync(dataDir, { recursive: true, force: true });
   });
-  id = (await call(port, 'POST', '/api/projects', { mode: 'offline', brief })).project.id;
+  id = (await createAndStart((...args) => call(port, ...args), { mode: 'offline', brief })).project.id;
   const first = await settled(port, id), question = structuredClone(first.questions[0]);
   const authority = app.projects.get(id);
   authority.referenceResolutions = [{ id: 'synthetic-confirmed', projectId: id, baseVersion: first.version,
@@ -123,11 +124,12 @@ test('vague answers preserve constraints; only explicit typed revisions change v
   assert.equal((await call(port, 'POST', endpoint, answer(value, '明确只撤销现场演出禁令，保留禁止强制注册', {
     briefUpdate: { field: 'avoid', value: [' 强制注册 '] } }))).status, 202);
   await settled(port, value.id); assert.deepEqual(value.brief.avoid, ['强制注册']);
-  const concepts = ['a', 'b'].map(id => ({ id, title: id, coreClaim: '试穿与现场演出', mechanism: { organization: id, description: '试穿与现场演出' },
+  const concepts = ['a', 'b'].map(id => ({ id, title: id, coreClaim: '试穿与现场演出', mechanism: { organization: id, description: id === 'a'
+    ? '同组轮流试穿并一起观看现场演出' : '个人自选时间试穿后自由观看现场演出' },
     journey: ['来', '做', '走'].map(stage => ({ stage, action: '试穿与现场演出' })), productTouchpoints: ['试穿'], evidenceLinks: [], openQuestions: [], unverifiedEffects: ['效果未知'] }));
   const candidate = { projectId: value.id, baseVersion: value.version, phase: 'insufficient_evidence', summary: '仅验证约束，无真实方案依据', concepts };
   assert.doesNotThrow(() => validateProposal(value, candidate));
-  candidate.concepts[0].mechanism.description += '强制注册'; assert.throws(() => validateProposal(value, candidate), /禁止项/);
+  candidate.concepts[0].mechanism.description += '强制注册'; assert.throws(() => validateProposal(value, candidate), /excluded item/);
   applyProposal(value, proposal(value, 'request')); app.saveProject(value);
   const revisionText = '明确将城市从上海改为杭州，预算与其他条件不变。';
   const revised = answer(value, revisionText); revised.clarification.reviseRequest = true;
@@ -142,10 +144,10 @@ test('vague answers preserve constraints; only explicit typed revisions change v
   assert.deepEqual(value.brief.mustKeep, ['试穿']);
   candidate.baseVersion = value.version;
   for (const concept of candidate.concepts) {
-    concept.coreClaim = '触摸样本'; concept.mechanism.description = '触摸样本';
+    concept.coreClaim = '触摸样本'; concept.mechanism.description = concept.id === 'a' ? '同组轮流触摸样本' : '个人自选顺序触摸样本';
     concept.journey.forEach(step => { step.action = '触摸样本'; }); concept.productTouchpoints = ['触摸样本'];
   }
-  assert.throws(() => validateProposal(value, candidate), /必须保留项/);
+  assert.throws(() => validateProposal(value, candidate), /must-keep/);
   applyProposal(value, proposal(value, 'request')); app.saveProject(value);
   const targeted = answer(value, '客户明确用触摸样本替代试穿', { briefUpdate: { field: 'mustKeep', value: ['触摸样本'] } });
   const beforeTarget = JSON.stringify(value);
@@ -168,13 +170,13 @@ test('vague answers preserve constraints; only explicit typed revisions change v
   restoredAvoid.clarification.reviseRequest = true;
   assert.equal((await call(port, 'POST', endpoint, restoredAvoid)).status, 202); await settled(port, value.id);
   candidate.baseVersion = value.version; candidate.concepts[0].mechanism.description += '现场演出';
-  assert.throws(() => validateProposal(value, candidate), /禁止项/);
+  assert.throws(() => validateProposal(value, candidate), /excluded item/);
   applyProposal(value, proposal(value, 'request')); app.saveProject(value);
   const removedAvoid = answer(value, '明确仅取消现场演出禁令', { briefUpdate: { field: 'avoid', value: ['强制注册'] } });
   removedAvoid.clarification.reviseRequest = true;
   assert.equal((await call(port, 'POST', endpoint, removedAvoid)).status, 202); await settled(port, value.id);
   candidate.baseVersion = value.version; assert.doesNotThrow(() => validateProposal(value, candidate));
-  candidate.concepts[0].mechanism.description += '强制注册'; assert.throws(() => validateProposal(value, candidate), /禁止项/);
+  candidate.concepts[0].mechanism.description += '强制注册'; assert.throws(() => validateProposal(value, candidate), /excluded item/);
   applyProposal(value, proposal(value, 'request')); app.saveProject(value);
   const venueChange = answer(value, '明确将城市改成杭州，其余条件保留', { briefUpdate: { field: 'venue', value: '杭州室内150平方米' } });
   venueChange.clarification.reviseRequest = true;
@@ -227,7 +229,7 @@ test('too many independent unmaterialized supplements across fields stop before 
   let callbacks = 0;
   const runtime = await createProductRuntime(project, { env: {}, decide() { callbacks++; return []; } });
   t.after(async () => { await runtime.dispose(); const directory = resolve('.art-runtime', project.id); assert(directory.startsWith(resolve('.art-runtime') + sep)); rmSync(directory, { recursive: true, force: true }); });
-  await assert.rejects(runtime.submit('继续'), /超过12项/);
+  await assert.rejects(runtime.submit('继续'), /more than 12/);
   assert.equal(callbacks, 0); assert.equal(project.runtime.localFailure.code, 'MODEL_CONTEXT_CLARIFICATION_LIMIT');
   assert.deepEqual(project.clarifications, before); assert.equal(project.brief.request, original);
   assert.equal(project.usage.modelHttpAttempts, 0); assert.equal(project.usage.qlooHttpAttempts, 0);

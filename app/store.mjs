@@ -3,7 +3,7 @@ import pg from 'pg';
 import { LIMITS, finishRevisionRequest } from './state.mjs';
 
 const failure = (code, message, statusCode = 503) => Object.assign(new Error(message), { code, statusCode });
-const conflict = () => failure('PROJECT_STORAGE_CONFLICT', '项目已变化或执行许可已失效；请重新读取，未覆盖已保存内容。', 409);
+const conflict = () => failure('PROJECT_STORAGE_CONFLICT', 'The project changed or its execution lease expired. Read it again; saved content was not overwritten.', 409);
 const keys = Object.keys(LIMITS);
 
 export function interruptProject(project, detail) {
@@ -20,7 +20,7 @@ export function createPostgresStore({ connectionString, pool = new pg.Pool({ con
   const configured = (names, fallback) => Object.fromEntries(keys.map((key, index) => {
     const value = env[names[index]] === undefined ? fallback[key] : Number(env[names[index]]);
     if (value !== null && (!Number.isSafeInteger(value) || value < 0 || String(env[names[index]] ?? value).trim() === ''))
-      throw failure('HTTP_BUDGET_CONFIG_INVALID', 'HTTP 预算配置无效；未启用请求。');
+      throw failure('HTTP_BUDGET_CONFIG_INVALID', 'Invalid HTTP budget configuration. Requests are disabled.');
     return [key, value];
   }));
   const limits = configured(['ART_MODEL_HTTP_LIMIT', 'ART_QLOO_HTTP_LIMIT'], LIMITS);
@@ -41,7 +41,7 @@ export function createPostgresStore({ connectionString, pool = new pg.Pool({ con
     } catch (error) {
       if (client) try { await client.query('ROLLBACK'); } catch { /* Commit uncertainty never permits HTTP or an automatic retry. */ }
       if (error.statusCode) throw error;
-      throw failure('PROJECT_STORE_UNAVAILABLE', '数据库操作未确认成功；未发布候选状态或自动重试，请重新读取核对。');
+      throw failure('PROJECT_STORE_UNAVAILABLE', 'The database operation was not confirmed. No candidate state was published or retried automatically. Read the saved project again.');
     } finally { client?.release(); }
   }
   const rowFor = async (client, id) => {
@@ -73,21 +73,28 @@ export function createPostgresStore({ connectionString, pool = new pg.Pool({ con
         const confirmed = new Map(attempts.map(({ detail }) => [detail.id, detail]));
         if (row.state.runtime.httpAttempts) row.state.runtime.httpAttempts = row.state.runtime.httpAttempts.map(attempt => confirmed.get(attempt.id) ?? attempt);
         if (row.lease_token && new Date(row.lease_until) <= new Date()) {
-          interruptProject(row.state, '执行许可已过期，上一轮可能被平台中断；已预留请求不退款、不自动重复。');
+          interruptProject(row.state, 'The execution lease expired; the platform may have interrupted the previous run. Reserved requests are not refunded or automatically repeated.');
           return write(client, row.state, null);
         }
         return row.state;
       });
     },
-    async save(project, { token = null, start = false, leaseMs = 270000 } = {}) {
+    async save(project, { token = null, create = false, start = false, initial = false, leaseMs = 270000 } = {}) {
       return transaction(async (client, run) => {
         const row = await rowFor(client, project.id);
+        if (create && row) {
+          if (!project.creation?.fingerprint || row.state.creation?.fingerprint !== project.creation.fingerprint
+            || row.state.guestOwner !== project.guestOwner)
+            throw failure('PROJECT_CREATION_CONFLICT', 'This creation request belongs to different input or a different visitor. The original project was not overwritten.', 409);
+          return row.state;
+        }
+        if (initial && row && row.state.status.phase !== 'created') return { project: row.state, alreadyStarted: true };
         if (project.storageVersion === undefined) { if (row) throw conflict(); }
         else current(row, project);
         if (start) {
           if (row?.lease_token && new Date(row.lease_until) <= new Date())
-            throw failure('RUN_RECOVERY_REQUIRED', '上一轮执行许可已过期；请先读取原项目核对中断状态和请求账本，未启动新轮次。', 409);
-          if (row?.lease_token) throw failure('RUNTIME_BUSY', '本项目已有任务执行中；没有将本请求加入后台队列。', 409);
+            throw failure('RUN_RECOVERY_REQUIRED', 'The previous execution lease expired. Read the original project to check interruption and request records first. No new run was started.', 409);
+          if (row?.lease_token) throw failure('RUNTIME_BUSY', 'This project already has a running request. The new request was not queued.', 409);
           token = randomUUID();
           const deadline = new Date(Date.now() + leaseMs);
           const candidate = structuredClone(project);
@@ -106,9 +113,9 @@ export function createPostgresStore({ connectionString, pool = new pg.Pool({ con
         const key = detail.kind === 'model' ? 'modelHttpAttempts' : 'qlooHttpAttempts';
         if (project.runtime.infrastructureStopped || (project.runtime.failure && project.runtime.failure.kind !== 'qloo') || project.status.phase === 'interrupted'
           || (detail.kind === 'qloo' && project.runtime.queryStopped))
-          throw failure('VALIDATION_RUN_STOPPED', '本项目真实运行已停止；没有发出请求。', 409);
+          throw failure('VALIDATION_RUN_STOPPED', 'Live execution has stopped for this project. No request was sent.', 409);
         if (row.state.usage[key] >= limits[key] || (sharedLimits[key] !== null && run.usage[key] >= sharedLimits[key]))
-          throw failure('HTTP_BUDGET_EXHAUSTED', '共享或项目 HTTP 总额度已用尽；没有发出请求。', 409);
+          throw failure('HTTP_BUDGET_EXHAUSTED', 'The shared or project HTTP budget is exhausted. No request was sent.', 409);
         if ((await client.query('SELECT id FROM art_http_attempts WHERE id=$1', [detail.id])).rowCount) throw conflict();
         const next = structuredClone(project);
         next.usage[key] = row.state.usage[key] + 1;

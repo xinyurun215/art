@@ -39,15 +39,15 @@ function matchCandidate(original, input, candidates, nameResolved = false) {
       properties: candidate.properties, description: candidate.description })).includes(normalize(creator))));
   return { matching, selected: matching.length === 1 ? matching[0] : null, basis: { name: title, ...(type ? { type } : {}),
     ...(year?.length === 1 ? { release_year: year[0] } : {}), ...(creator ? { creator } : {}),
-    source: '实际返回字段与当前原始参考匹配；这是系统解析，不是用户确认。' } };
+    source: 'Actual returned fields match the original reference. This is system resolution, not user confirmation.' } };
 }
 
 export function referenceQuestion(project) {
   const pending = pendingReference(project);
   if (!pending) return;
   project.questions = [{ id: pending.id, field: 'references', text: pending.status === 'pending'
-    ? `“${pending.originalInput}”有多个合理实体，请选择实际参考；尚未进行用户确认。`
-    : `“${pending.originalInput}”尚未匹配，请补充作品名称、类型、年份或创作者。` }];
+    ? `More than one entity may match “${pending.originalInput}”. Choose the actual reference; none has been confirmed by the user.`
+    : `“${pending.originalInput}” is unresolved. Add the title, type, year or creator.` }];
   project.status = { phase: 'needs_input', detail: project.questions[0].text };
 }
 
@@ -88,7 +88,7 @@ export function observeReferenceResolution(project, operation, input, result) {
           input: input.entity, originalInput: source.text, sourceText: source.sourceText ?? source.text, sourceField: source.field,
           operation, toolInput: structuredClone(input), field: 'entity', candidates: [structuredClone(selected)],
           status: 'system_resolved', selectedId: selected.id, selected: structuredClone(selected),
-          basis: { ...match.basis, source: '官方成功描述已解析名称并返回同一实体；用户原始限定相符。这是系统解析，不是用户确认。' },
+          basis: { ...match.basis, source: 'The official description resolved the name and returned the same entity, matching the original qualifiers. This is system resolution, not user confirmation.' },
           createdAt: new Date().toISOString(), confirmed: false, ...(project.mode === 'offline' ? { synthetic: true } : {}) });
       }
     }
@@ -131,7 +131,7 @@ export function bindReferenceInputs(project, operation, input) {
   const fields = resolutionInputContexts(`qloo_${operation}`, input).filter(context => context.inputKind === 'entity');
   for (const field of fields) for (const value of Array.isArray(input[field.field]) ? input[field.field] : [input[field.field]]) {
     for (const record of records) fail(!(record.returnedCandidates ?? record.candidates).some(candidate => sameId(candidate.id, value) && !sameId(candidate.id, record.selectedId)),
-      'REFERENCE_CHOICE_MISMATCH', '该输入使用了未选中的歧义候选；请使用当前已解析实体。');
+      'REFERENCE_CHOICE_MISMATCH', 'This input uses an unselected ambiguous candidate. Use the currently resolved entity.');
   }
   const choices = records.flatMap(record => [record.input, record.originalInput].map(value => ({
     input: value, selectedId: record.selectedId, inputKind: 'entity' })));
@@ -139,24 +139,24 @@ export function bindReferenceInputs(project, operation, input) {
 }
 
 export function requireResolvedReferences(project) {
-  fail(!pendingReference(project), 'REFERENCE_CONFIRMATION_REQUIRED', '输入文化参考尚未解决；请先在页面选择候选或补充信息。');
+  fail(!pendingReference(project), 'REFERENCE_CONFIRMATION_REQUIRED', 'The input cultural reference is unresolved. Choose a candidate on the page or add detail first.');
 }
 
 export function respondToReference(project, input) {
   const record = pendingReference(project);
   fail(record && record.projectId === project.id && input?.resolutionId === record.id
     && input.baseVersion === project.version && record.baseVersion === project.version,
-  'STALE_REFERENCE_RESOLUTION', '实体选择已过期或不属于当前项目；请刷新后重试。');
+  'STALE_REFERENCE_RESOLUTION', 'This entity choice is stale or belongs to another project. Refresh before retrying.');
   fail(Object.keys(input).every(key => ['resolutionId', 'baseVersion', 'action', 'selectedId', 'text'].includes(key)),
-    'REFERENCE_SELECTION_INVALID', '实体选择参数无效。');
+    'REFERENCE_SELECTION_INVALID', 'Invalid entity selection arguments.');
   if (input.action === 'confirm') {
     const selected = record.status === 'pending' && record.candidates.find(candidate => sameId(candidate.id, input.selectedId));
-    fail(selected, 'REFERENCE_SELECTION_INVALID', '选择不在当前有效候选中；未确认任何实体。');
+    fail(selected, 'REFERENCE_SELECTION_INVALID', 'The selection is not among the current candidates. No entity was confirmed.');
     Object.assign(record, { status: 'user_confirmed', confirmed: true, selectedId: selected.id, selected: structuredClone(selected),
-      confirmedAt: new Date().toISOString(), basis: { source: '用户在当前项目页面选择，服务端已校验当前有效候选。' } });
+      confirmedAt: new Date().toISOString(), basis: { source: 'The user selected a current candidate on this project page, and the server validated the choice.' } });
     project.questions = [];
     referenceQuestion(project);
-    return `用户已选择文化参考“${record.originalInput}”：${selected.name}（${selected.id}）。继续原研究，使用当前已确认 ID。`;
+    return `The user selected cultural reference “${record.originalInput}”: ${selected.name} (${selected.id}). Continue the original research using this confirmed ID.`;
   }
   if (input.action === 'cancel') {
     Object.assign(record, { status: 'needs_details', candidates: [], cancelledAt: new Date().toISOString() });
@@ -164,12 +164,12 @@ export function respondToReference(project, input) {
     return;
   }
   fail(input.action === 'clarify' && typeof input.text === 'string' && input.text.trim(),
-    'REFERENCE_SELECTION_INVALID', '请明确选择当前候选或补充新的参考信息；未确认任何实体。');
+    'REFERENCE_SELECTION_INVALID', 'Explicitly choose a current candidate or add new reference details. No entity was confirmed.');
   const text = input.text.trim();
   const referenceText = /《[^》]+》/.test(text) ? text : `${record.originalInput}；${text}`;
   if (record.sourceField === 'references') {
     const index = project.brief.references.indexOf(record.sourceText ?? record.originalInput);
-    fail(index >= 0, 'STALE_REFERENCE_RESOLUTION', '原始参考已改变；请刷新后重试。');
+    fail(index >= 0, 'STALE_REFERENCE_RESOLUTION', 'The original reference has changed. Refresh before retrying.');
     project.brief.references[index] = referenceText;
   } else project.brief.references.push(referenceText);
   record.status = 'superseded';
@@ -183,7 +183,7 @@ export function respondToReference(project, input) {
   if (match.selected) Object.assign(resolved, { selectedId: match.selected.id, selected: structuredClone(match.selected), basis: match.basis });
   (project.referenceResolutions ??= []).push(resolved);
   referenceQuestion(project);
-  return `用户补充文化参考：${referenceText}。${match.selected ? `实际候选唯一匹配${match.selected.id}；系统解析继续，不是用户点击确认。` : '重新核实身份，不代表已确认任何候选。'}`;
+  return `The user added cultural reference details: ${referenceText}. ${match.selected ? `The actual candidates uniquely match ${match.selected.id}. Continue with system resolution; this is not a user confirmation.` : 'Recheck the identity; no candidate has been confirmed.'}`;
 }
 
 export function referenceResolutionView(project) {

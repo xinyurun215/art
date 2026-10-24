@@ -9,7 +9,7 @@ test('user locks block proposals and acceptance; unlocking approves nothing and 
   setFieldLock(project, { baseVersion: 1, field: 'mechanism', locked: true });
   assert.deepEqual(project.lockedFields, ['mechanism']);
   assert.equal(project.version, 1);
-  assert.match(project.actions.at(-1).label, /锁定 参与机制/);
+  assert.match(project.actions.at(-1).label, /Lock Participation mechanism/);
 
   const blocked = beginRevision(project, { conceptId: 'a', baseVersion: 1, text: '改为双人参与' });
   assert.throws(() => proposeRevision(project, revisionInput(blocked)), { code: 'FIELD_LOCKED' });
@@ -18,7 +18,7 @@ test('user locks block proposals and acceptance; unlocking approves nothing and 
 
   setFieldLock(project, { baseVersion: 1, field: 'mechanism', locked: false });
   assert.deepEqual(project.lockedFields, []);
-  assert.match(project.actions.at(-1).detail, /不等于批准修改/);
+  assert.match(project.actions.at(-1).detail, /does not approve a change/);
   assert.deepEqual(project.concepts, confirmed);
 
   const request = beginRevision(project, { conceptId: 'a', baseVersion: 1, text: '改为双人参与' });
@@ -44,5 +44,5 @@ test('locks require a selected concept, a current version and an allowed field, 
   assert.equal(project.selectedConceptId, 'a');
   selectConcept(project, { conceptId: 'a', baseVersion: 1 });
   project.selectedConceptId = null;
-  assert.throws(() => setFieldLock(project, { baseVersion: 1, field: 'title', locked: true }), /请先选择概念/);
+  assert.throws(() => setFieldLock(project, { baseVersion: 1, field: 'title', locked: true }), /Select a concept/);
 });

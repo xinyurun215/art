@@ -107,7 +107,7 @@ test('exhausted Windows EPERM stops without sending or publishing counters', asy
   const before = state.saved();
   const observed = observe(t, state, { fail: () => true });
   const wire = sender(state);
-  await assert.rejects(wire.send(), /额度无法保存/);
+  await assert.rejects(wire.send(), /budget could not be saved/);
   assert.equal(wire.sent, 0);
   assert.deepEqual(observed.waits, [100, 200, 400, 800]);
   assert.equal(observed.attempts.length, 6, 'five attempts for the reservation and one non-retrying stop-state save');
@@ -132,7 +132,7 @@ for (const [platform, code] of [['linux', 'EPERM'], ['win32', 'EIO']]) {
     const state = fixture(t);
     const observed = observe(t, state, { platform, code, fail: () => true });
     const wire = sender(state);
-    await assert.rejects(wire.send(), /额度无法保存/);
+    await assert.rejects(wire.send(), /budget could not be saved/);
     assert.equal(wire.sent, 0);
     assert.deepEqual(observed.waits, []);
     assert.equal(observed.attempts.length, 2, 'one reservation attempt and one stop-state save, neither retries');
@@ -145,7 +145,7 @@ test('project save failure retains an already durable reservation without sendin
   const state = fixture(t, () => { throw new Error('synthetic project save failure'); });
   const observed = observe(t, state);
   const wire = sender(state);
-  await assert.rejects(wire.send(), /额度无法保存/);
+  await assert.rejects(wire.send(), /budget could not be saved/);
   assert.equal(wire.sent, 0);
   assert.deepEqual(transport.serverUsage, counts(1, 0));
   assert.equal(state.project.usage.modelHttpAttempts, 1);
@@ -193,7 +193,7 @@ test('a request awaiting its body cannot reserve or send after another request s
   const fetch = transport.budgetedFetch(async () => { sent++; return new Response('{}'); });
   const pending = transport.withHttpBudget(state.project, 'model', 'https://model.invalid', () => fetch(request));
   await bodyStarted;
-  await assert.rejects(wire.send(blocker), /额度无法保存/);
+  await assert.rejects(wire.send(blocker), /budget could not be saved/);
   assert.equal(transport.validationRun.liveStopped, true);
   assert.equal(observed.attempts.length, 6);
   releaseBody();

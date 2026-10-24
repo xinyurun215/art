@@ -12,7 +12,7 @@ const projectBudgets = new WeakMap();
 const usageKeys = Object.keys(LIMITS);
 const validCount = value => Number.isSafeInteger(value) && value >= 0;
 const validUsage = value => value && usageKeys.every(key => validCount(value[key]));
-const configurationError = () => Object.assign(new Error('HTTP 预算配置或持久化摘要无效；真实调用未启用。'), { code: 'HTTP_BUDGET_CONFIG_INVALID' });
+const configurationError = () => Object.assign(new Error('The HTTP budget configuration or saved summary is invalid. Live requests are disabled.'), { code: 'HTTP_BUDGET_CONFIG_INVALID' });
 
 function checkSavedBudget(saved, limits, sharedLimits) {
   if (saved.schemaVersion !== 1 || JSON.stringify(saved.limits) !== JSON.stringify(limits)
@@ -165,6 +165,13 @@ export function bindDatabaseBudget(project, store, token, signal, usage = {}) {
   projectBudgets.set(project, { budget, entry: { limits: store.limits } });
 }
 
+export function liveRunStopped(project) {
+  return projectBudgets.get(project)?.budget.store
+    ? Boolean(project.runtime.infrastructureStopped || (project.runtime.failure && project.runtime.failure.kind !== 'qloo')
+      || project.status.phase === 'interrupted')
+    : validationRun.liveStopped;
+}
+
 export function remainingBudget(project) {
   const limits = projectLimits(project);
   const sharedLimits = projectBudgets.get(project)?.budget.sharedLimits ?? SERVER_LIMITS;
@@ -175,7 +182,8 @@ export function remainingBudget(project) {
       ? projectBudgets.get(project).budget.usage[key] ?? 0 : serverUsage[key]));
   }
   const both = key => sharedRemaining[key] === null ? caseRemaining[key] : Math.min(caseRemaining[key], sharedRemaining[key]);
-  const queryStopped = Boolean(project.runtime.queryStopped || (project.mode === 'live' && validationRun.queryStopped));
+  const queryStopped = Boolean(project.runtime.queryStopped
+    || (project.mode === 'live' && !projectBudgets.get(project)?.budget.store && validationRun.queryStopped));
   return { modelHttpAttempts: both('modelHttpAttempts'),
     qlooHttpAttempts: queryStopped ? 0 : both('qlooHttpAttempts'),
     caseRemaining, sharedRemaining, caseLimits: limits, sharedLimits, queryStopped };
@@ -289,13 +297,13 @@ export function createDiagnosticFetch(implementation = originalFetch, secrets = 
     const method = String(options.method ?? url?.method ?? 'GET').toUpperCase();
     if (destination.href !== 'https://api.deepseek.com/chat/completions' || method !== 'POST' || reserved) {
       ledger.blockedHttpAttempts++;
-      throw new Error('诊断只允许一次明确的 DeepSeek 模型请求，禁止后续模型与所有 Qloo 请求');
+      throw new Error('The diagnostic permits one explicit DeepSeek model request. Further model and all Qloo requests are forbidden');
     }
     reserved = true;
     const body = JSON.parse(typeof options.body === 'string' ? options.body : await url.clone().text());
     if (body.model !== 'deepseek-flash') {
       ledger.blockedHttpAttempts++;
-      throw new Error('诊断禁止未批准的模型调用名');
+      throw new Error('The diagnostic forbids an unapproved model name');
     }
     const entry = { kind: 'model', method, host: destination.host, path: destination.pathname,
       request: summarizeModelRequest(body), status: null, durationMs: null };
@@ -320,6 +328,11 @@ export function createDiagnosticFetch(implementation = originalFetch, secrets = 
 
 export function stopLiveRun(project, failure, stopQueries = false) {
   if (project.mode !== 'live') return;
+  if (projectBudgets.get(project)?.budget.store) {
+    project.runtime.failure = failure;
+    if (stopQueries) project.runtime.queryStopped = true;
+    return;
+  }
   if (stopQueries) validationRun.queryStopped = true;
   else validationRun.liveStopped = true;
   validationRun.failure ??= failure;
@@ -340,7 +353,7 @@ export function safeRuntimeFailure(project, kind, stopReason = 'error') {
     : kind === 'model' ? 'MODEL_PROTOCOL_OR_TRANSPORT_ERROR' : 'TOOLCHAIN_ERROR';
   return { kind, code, status, stopReason: stopReason === 'aborted' ? 'aborted' : 'error',
     ...(attempt?.providerError ? { providerError: attempt.providerError } : {}),
-    summary: `${kind === 'model' ? '模型' : '官方工具链'}未完成${status ? `（HTTP ${status}）` : ''}；当前状态已保留，本轮真实验证已停止。` };
+    summary: `${kind === 'model' ? 'The model' : 'The official toolchain'} did not finish${status ? ` (HTTP ${status})` : ''}. The current state was kept and this live run stopped.` };
 }
 
 // Public SDKs retain their own HTTP implementations. This boundary counts each
@@ -348,29 +361,29 @@ export function safeRuntimeFailure(project, kind, stopReason = 'error') {
 export function budgetedFetch(implementation = originalFetch) {
   return async (url, options = {}) => {
     const current = context.getStore();
-    if (!current) throw new Error('HTTP 请求缺少明确的项目额度上下文');
+    if (!current) throw new Error('The HTTP request has no explicit project budget context');
     const { project, kind, origin } = current;
-    if (project.mode !== 'live') throw recordLocalFailure(project, kind, 'OFFLINE_HTTP_BLOCKED', '离线模式禁止外部 HTTP 请求');
-    if (validationRun.liveStopped) throw recordLocalFailure(project, kind, 'VALIDATION_RUN_STOPPED', '本轮真实调用已经停止');
+    if (project.mode !== 'live') throw recordLocalFailure(project, kind, 'OFFLINE_HTTP_BLOCKED', 'Offline mode forbids external HTTP requests');
+    if (liveRunStopped(project)) throw recordLocalFailure(project, kind, 'VALIDATION_RUN_STOPPED', 'Live requests have stopped for this run');
     const destination = new URL(typeof url === 'string' || url instanceof URL ? url : url.url);
-    if (destination.origin !== origin) throw recordLocalFailure(project, kind, 'HTTP_ENDPOINT_BLOCKED', '请求端点不在本次明确配置范围内');
+    if (destination.origin !== origin) throw recordLocalFailure(project, kind, 'HTTP_ENDPOINT_BLOCKED', 'The endpoint is outside the explicitly configured scope');
     if (kind === 'model' && project.runtime.generationBudget) {
       const body = JSON.parse(typeof options.body === 'string' ? options.body : await url.clone().text());
       const finalMaxTokens = modelOutputLimit(body);
       if (finalMaxTokens !== project.runtime.generationBudget.finalMaxTokens)
-        throw recordLocalFailure(project, kind, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT', '模型实际发送参数与预检容量不符；本地已阻止请求。');
+        throw recordLocalFailure(project, kind, 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT', 'The actual model request parameters do not match the capacity preflight. The request was blocked locally.');
     }
     // Reading a Request body can yield while another caller stops the run.
-    if (validationRun.liveStopped) throw recordLocalFailure(project, kind, 'VALIDATION_RUN_STOPPED', '本轮真实调用已经停止');
+    if (liveRunStopped(project)) throw recordLocalFailure(project, kind, 'VALIDATION_RUN_STOPPED', 'Live requests have stopped for this run');
     const key = kind === 'model' ? 'modelHttpAttempts' : 'qlooHttpAttempts';
-    if (kind === 'qloo' && (project.runtime.queryStopped || validationRun.queryStopped))
-      throw recordLocalFailure(project, kind, 'QLOO_QUERY_STOPPED', '本轮真实查询已经停止');
+    if (kind === 'qloo' && remainingBudget(project).queryStopped)
+      throw recordLocalFailure(project, kind, 'QLOO_QUERY_STOPPED', 'Live queries have stopped for this run');
     const binding = projectBudgets.get(project);
-    if (binding?.budget.signal?.aborted) throw recordLocalFailure(project, kind, 'RUN_INTERRUPTED', '本轮已中断，禁止发出后续请求。');
-    if (binding?.budget.infrastructureStopped || binding?.budget.failedKinds?.has(kind)) throw recordLocalFailure(project, kind, 'HTTP_RETRY_BLOCKED', '此前请求或保存失败；禁止自动重复外发。');
+    if (binding?.budget.signal?.aborted) throw recordLocalFailure(project, kind, 'RUN_INTERRUPTED', 'This run was interrupted. Further requests are forbidden.');
+    if (binding?.budget.infrastructureStopped || binding?.budget.failedKinds?.has(kind)) throw recordLocalFailure(project, kind, 'HTTP_RETRY_BLOCKED', 'A previous request or save failed. Automatic repeat sends are forbidden.');
     const sharedLimits = binding?.budget.sharedLimits ?? SERVER_LIMITS;
     if (project.usage[key] >= projectLimits(project)[key] || (!binding?.budget.store && serverUsage[key] >= sharedLimits[key]))
-      throw recordLocalFailure(project, kind, kind === 'model' ? 'MODEL_HTTP_BUDGET_EXHAUSTED' : 'QLOO_HTTP_BUDGET_EXHAUSTED', `${kind} HTTP 总额度已用尽`);
+      throw recordLocalFailure(project, kind, kind === 'model' ? 'MODEL_HTTP_BUDGET_EXHAUSTED' : 'QLOO_HTTP_BUDGET_EXHAUSTED', `The ${kind} HTTP budget is exhausted`);
     let databaseEntry;
     if (binding?.budget.store) {
       databaseEntry = { id: randomUUID(), kind, time: new Date().toISOString(), status: null, durationMs: null,
@@ -385,12 +398,12 @@ export function budgetedFetch(implementation = originalFetch) {
       } catch (error) {
         binding.budget.failedKinds.add(kind);
         if (error.code === 'HTTP_BUDGET_EXHAUSTED')
-          throw recordLocalFailure(project, kind, kind === 'model' ? 'MODEL_HTTP_BUDGET_EXHAUSTED' : 'QLOO_HTTP_BUDGET_EXHAUSTED', `${kind} HTTP 总额度已用尽；未发送请求。`);
+          throw recordLocalFailure(project, kind, kind === 'model' ? 'MODEL_HTTP_BUDGET_EXHAUSTED' : 'QLOO_HTTP_BUDGET_EXHAUSTED', `The ${kind} HTTP budget is exhausted. No request was sent.`);
         if (error.code === 'VALIDATION_RUN_STOPPED')
-          throw recordLocalFailure(project, kind, 'VALIDATION_RUN_STOPPED', '共享真实运行或文化查询已停止；未发送请求。');
+          throw recordLocalFailure(project, kind, 'VALIDATION_RUN_STOPPED', 'The shared live run or cultural query has stopped. No request was sent.');
         binding.budget.infrastructureStopped = true;
         project.runtime.infrastructureStopped = true;
-        throw recordLocalFailure(project, kind, 'HTTP_BUDGET_PERSISTENCE_FAILED', '请求额度与请求记录未确认保存；未发送请求，也不会自动重试。');
+        throw recordLocalFailure(project, kind, 'HTTP_BUDGET_PERSISTENCE_FAILED', 'The request budget and record were not confirmed saved. No request was sent and no automatic retry will occur.');
       }
     } else if (binding) {
       const candidate = binding.budget.summary();
@@ -407,7 +420,7 @@ export function budgetedFetch(implementation = originalFetch) {
       catch {
         validationRun.liveStopped = true;
         try { binding.budget.persist(); } catch { /* Fail closed even when the ledger itself cannot be written. */ }
-        throw recordLocalFailure(project, kind, 'HTTP_BUDGET_PERSISTENCE_FAILED', '请求额度无法保存；未发送请求，本轮停止。');
+        throw recordLocalFailure(project, kind, 'HTTP_BUDGET_PERSISTENCE_FAILED', 'The request budget could not be saved. No request was sent and this run stopped.');
       }
     } else { project.usage[key]++; serverUsage[key]++; }
     const started = Date.now();
@@ -415,7 +428,7 @@ export function budgetedFetch(implementation = originalFetch) {
       method: String(options.method ?? url?.method ?? 'GET').toUpperCase(), host: destination.host, path: destination.pathname,
       ...(kind === 'model' && project.runtime.generationBudget ? { generationBudget: { ...project.runtime.generationBudget } } : {}) };
     if (!databaseEntry) (project.runtime.httpAttempts ??= []).push(entry);
-    validationRun.attempts.push(entry);
+    if (!binding?.budget.store) validationRun.attempts.push(entry);
     // Automatic redirects would hide extra HTTP attempts from this counter.
     try {
       binding?.budget.signal?.throwIfAborted();
@@ -444,7 +457,7 @@ export function budgetedFetch(implementation = originalFetch) {
           project.runtime.infrastructureStopped = true;
           Object.assign(entry, { status: null, durationMs: null, outcome: 'reserved_unknown' });
           delete entry.providerError;
-          throw recordLocalFailure(project, kind, 'HTTP_ATTEMPT_SAVE_FAILED', '请求已可能发出，但结果记录无法保存；本轮停止，禁止自动重发。');
+          throw recordLocalFailure(project, kind, 'HTTP_ATTEMPT_SAVE_FAILED', 'The request may have been sent, but its result could not be saved. This run stopped; automatic resend is forbidden.');
         }
       }
     }

@@ -7,9 +7,9 @@ export const list = (value) => (Array.isArray(value) ? value : typeof value === 
 const text = value => typeof value === 'string' ? value.trim() : '';
 
 export function createProject({ brief = {}, mode = 'offline', scenario = 'sufficient' } = {}) {
-  if (!['offline', 'live'].includes(mode)) throw new Error('不支持的运行模式');
-  if (!['sufficient', 'failure', 'irrelevant'].includes(scenario)) throw new Error('不支持的离线场景');
-  if (!text(brief.request)) throw new Error('请先描述项目需求');
+  if (!['offline', 'live'].includes(mode)) throw new Error('Unsupported run mode');
+  if (!['sufficient', 'failure', 'irrelevant'].includes(scenario)) throw new Error('Unsupported offline scenario');
+  if (!text(brief.request)) throw new Error('Describe the project brief first');
   return {
     id: randomUUID(), version: 1, mode, scenario,
     brief: { request: brief.request, brand: text(brief.brand), goal: text(brief.goal),
@@ -17,7 +17,7 @@ export function createProject({ brief = {}, mode = 'offline', scenario = 'suffic
       mustKeep: list(brief.mustKeep), avoid: list(brief.avoid) },
     messages: [{ role: 'user', text: brief.request }], actions: [], questions: [], clarifications: [], evidence: [], concepts: [],
     selectedConceptId: null, revisions: [], versionHistory: [], revisionRequest: null,
-    status: { phase: 'busy', detail: '正在建立官方智能体会话' },
+    status: { phase: 'busy', detail: 'Starting the official agent session' },
     usage: { modelCalls: 0, modelHttpAttempts: 0, qlooHttpAttempts: 0, toolCalls: 0 },
     runtime: { sessionId: null, toolNames: [], modelResultReads: 0 },
   };
@@ -34,11 +34,11 @@ export function answerClarification(project, input) {
   revisionEnsure(exactKeys(input, ['text', 'clarification', 'briefUpdate']) && nonempty(input.text)
     && exactKeys(binding, ['questionId', 'baseVersion', 'reviseRequest'])
     && (binding.reviseRequest === undefined || typeof binding.reviseRequest === 'boolean'),
-  '回答须关联当前问题与项目版本', '/clarification', 'CLARIFICATION_INVALID');
+  'The answer must reference the current question and project version', '/clarification', 'CLARIFICATION_INVALID');
   revisionEnsure(project.status.phase === 'needs_input' && project.questions.length === 1
     && binding.questionId === question?.id && binding.baseVersion === project.version,
-  '问题或基础版本已过期；请刷新后回答当前问题', '/clarification', 'STALE_PROJECT_VERSION');
-  revisionEnsure(!binding.reviseRequest || question.field === 'request', '仅原需求问题可明确补充需求修改', '/clarification');
+  'The question or base version is stale. Refresh and answer the current question', '/clarification', 'STALE_PROJECT_VERSION');
+  revisionEnsure(!binding.reviseRequest || question.field === 'request', 'Only an original-request question can explicitly amend the original request', '/clarification');
   const field = input.briefUpdate?.field ?? question.field, before = project.brief[field];
   const arrayField = ['references', 'mustKeep', 'avoid'].includes(field);
   let update;
@@ -47,7 +47,7 @@ export function answerClarification(project, input) {
     revisionEnsure(exactKeys(value, ['field', 'value']) && (question.field === 'request'
       ? binding.reviseRequest === true && ['venue', 'budget', 'mustKeep', 'avoid'].includes(field) : field === question.field) && field !== 'request'
       && (arrayField ? Array.isArray(value.value) && value.value.every(nonempty) : typeof value.value === 'string'),
-    '明确修改须提供当前问题字段的完整有效值；原需求不能覆盖', '/briefUpdate', 'CLARIFICATION_INVALID');
+    'An explicit update needs the complete valid value for the current question field; it cannot overwrite the original request', '/briefUpdate', 'CLARIFICATION_INVALID');
     update = { field, before: structuredClone(before), after: arrayField ? list(value.value) : value.value.trim(), explicit: true };
   } else if (field !== 'request' && (arrayField ? before.length === 0 : !before)) {
     update = { field, before: structuredClone(before), after: arrayField ? list(input.text) : input.text.trim(), explicit: false };
@@ -76,77 +76,79 @@ function checkForbiddenItems(concept, avoid, pathFor, check) {
     const statement = value.trim().replace(/[。.]$/, '');
     const excluded = ['不', '不安排', '禁止'].some(prefix => statement === prefix + forbidden);
     check(!value.includes(forbidden) || excluded,
-      `概念字段字面命中禁止项 /brief/avoid/${index}（${JSON.stringify(forbidden)}）`, pathFor(field), 'FORBIDDEN_ITEM_PRESENT');
+      `The concept text contains an excluded item /brief/avoid/${index} (${JSON.stringify(forbidden)})`, pathFor(field), 'FORBIDDEN_ITEM_PRESENT');
   }
 }
 
 // This checks structure and literal constraints, not originality or design quality.
 export function validateProposal(project, proposal) {
   requireResolvedReferences(project);
-  ensure(proposal.projectId === project.id, '项目不匹配：禁止跨项目写入', '/projectId', 'PROJECT_MISMATCH');
-  ensure(proposal.baseVersion === project.version, '基础版本已过期，请基于当前项目重新提出方案', '/baseVersion', 'STALE_PROJECT_VERSION');
-  ensure(['needs_input', 'ready', 'insufficient_evidence'].includes(proposal.phase), '无效的提案状态', '/phase');
-  ensure(nonempty(proposal.summary), '提案缺少说明', '/summary');
+  ensure(proposal.projectId === project.id, 'Project mismatch: writes across projects are forbidden', '/projectId', 'PROJECT_MISMATCH');
+  ensure(proposal.baseVersion === project.version, 'The base version is stale. Propose against the current project', '/baseVersion', 'STALE_PROJECT_VERSION');
+  ensure(['needs_input', 'ready', 'insufficient_evidence'].includes(proposal.phase), 'Invalid proposal phase', '/phase');
+  ensure(nonempty(proposal.summary), 'The proposal needs a summary', '/summary');
   const questions = proposal.questions === undefined && proposal.phase !== 'needs_input' ? [] : proposal.questions;
-  ensure(Array.isArray(questions), '问题必须为数组', '/questions');
+  ensure(Array.isArray(questions), 'Questions must be an array', '/questions');
   for (const [index, q] of questions.entries()) {
     ensure(q !== null && typeof q === 'object' && !Array.isArray(q) && Object.keys(q).every(key => ['field', 'text'].includes(key)),
-      '问题必须为仅含 field 与 text 的对象', `/questions/${index}`);
-    ensure(typeof q.field === 'string' && Object.hasOwn(project.brief, q.field), '问题字段必须属于当前需求', `/questions/${index}/field`);
-    ensure(nonempty(q.text), '问题文字不能为空', `/questions/${index}/text`);
+      'Each question must contain only field and text', `/questions/${index}`);
+    ensure(typeof q.field === 'string' && Object.hasOwn(project.brief, q.field), 'The question field must belong to the current brief', `/questions/${index}/field`);
+    ensure(nonempty(q.text), 'Question text cannot be empty', `/questions/${index}/text`);
   }
-  ensure(Array.isArray(proposal.concepts), '概念必须为数组', '/concepts');
+  ensure(Array.isArray(proposal.concepts), 'Concepts must be an array', '/concepts');
   if (proposal.phase === 'needs_input') {
-    ensure(questions.length === 1 && proposal.concepts.length === 0, '每次待澄清状态须明确且仅包含一个问题', '/questions');
+    ensure(questions.length === 1 && proposal.concepts.length === 0, 'A clarification must contain exactly one question', '/questions');
     return;
   }
-  ensure(proposal.concepts.length === 2 || (proposal.phase === 'insufficient_evidence' && proposal.concepts.length === 0), '须提出两个概念，或在证据不足时明确暂停', '/concepts');
+  ensure(proposal.concepts.length === 2 || (proposal.phase === 'insufficient_evidence' && proposal.concepts.length === 0), 'Propose two concepts, or explicitly pause for insufficient evidence', '/concepts');
   if (!proposal.concepts.length) return;
-  ensure(new Set(proposal.concepts.map(c => c.id)).size === 2, '概念标识符重复', '/concepts');
-  const organizations = new Set();
+  ensure(new Set(proposal.concepts.map(c => c.id)).size === 2, 'Concept identifiers must be distinct', '/concepts');
+  const organizations = new Set(), mechanisms = new Set();
   for (const [index, concept] of proposal.concepts.entries()) {
     const path = `/concepts/${index}`;
-    for (const key of ['id', 'title', 'coreClaim']) ensure(nonempty(concept[key]), `概念缺少 ${key}`, `${path}/${key}`);
-    ensure(nonempty(concept.mechanism?.organization), '参与组织方式无效', `${path}/mechanism/organization`);
-    ensure(nonempty(concept.mechanism.description), '概念缺少参与机制说明', `${path}/mechanism/description`);
+    for (const key of ['id', 'title', 'coreClaim']) ensure(nonempty(concept[key]), `The concept is missing ${key}`, `${path}/${key}`);
+    ensure(nonempty(concept.mechanism?.organization), 'Invalid participation organization', `${path}/mechanism/organization`);
+    ensure(nonempty(concept.mechanism.description), 'The concept needs a participation mechanism description', `${path}/mechanism/description`);
     organizations.add(concept.mechanism.organization);
-    ensure(Array.isArray(concept.journey) && concept.journey.length >= 3 && concept.journey.every(s => nonempty(s.stage) && nonempty(s.action)), '概念需包含可读的体验旅程', `${path}/journey`);
+    ensure(Array.isArray(concept.journey) && concept.journey.length >= 3 && concept.journey.every(s => nonempty(s.stage) && nonempty(s.action)), 'The concept needs a readable experience journey', `${path}/journey`);
     for (const key of ['productTouchpoints', 'openQuestions', 'unverifiedEffects'])
-      ensure(Array.isArray(concept[key]) && concept[key].every(nonempty), `概念 ${key} 格式无效`, `${path}/${key}`);
-    ensure(concept.productTouchpoints.length > 0, '概念必须包含产品接触', `${path}/productTouchpoints`);
-    ensure(concept.unverifiedEffects.length > 0, '必须标注未验证效果', `${path}/unverifiedEffects`);
+      ensure(Array.isArray(concept[key]) && concept[key].every(nonempty), `Invalid concept ${key} format`, `${path}/${key}`);
+    ensure(concept.productTouchpoints.length > 0, 'The concept must include product contact', `${path}/productTouchpoints`);
+    mechanisms.add(JSON.stringify([concept.mechanism.description,
+      concept.journey.map(step => [step.stage, step.action]), concept.productTouchpoints]));
+    ensure(concept.unverifiedEffects.length > 0, 'Unverified effects must be marked', `${path}/unverifiedEffects`);
     const contact = concept.productTouchpoints.join(' ');
     const active = [concept.coreClaim, concept.mechanism.description, ...concept.journey.map(s => s.action), contact].join(' ');
-    for (const required of project.brief.mustKeep) ensure(active.includes(required), '概念必须保留需求中的必须保留项', path, 'REQUIRED_ITEM_MISSING');
+    for (const required of project.brief.mustKeep) ensure(active.includes(required), 'The concept must preserve the brief\'s must-keep items', path, 'REQUIRED_ITEM_MISSING');
     checkForbiddenItems(concept, project.brief.avoid, field => `${path}/${field}`, ensure);
-    ensure(Array.isArray(concept.evidenceLinks), '证据引用格式无效', `${path}/evidenceLinks`);
+    ensure(Array.isArray(concept.evidenceLinks), 'Invalid evidence reference format', `${path}/evidenceLinks`);
     for (const [linkIndex, link] of concept.evidenceLinks.entries()) {
       const linkPath = `${path}/evidenceLinks/${linkIndex}`;
       const evidence = project.evidence.find(e => e.id === link.evidenceId);
-      ensure(evidence && evidence.projectId === project.id, '未知证据或跨项目证据引用', `${linkPath}/evidenceId`, 'EVIDENCE_REFERENCE_INVALID');
-      ensure(evidence.relevant !== false, '无关结果不能支撑设计依据', `${linkPath}/evidenceId`, 'EVIDENCE_IRRELEVANT');
-      ensure(nonempty(link.observation) && nonempty(link.inspiration), '须分开说明返回事实与设计转译', linkPath);
+      ensure(evidence && evidence.projectId === project.id, 'Unknown evidence or a reference across projects', `${linkPath}/evidenceId`, 'EVIDENCE_REFERENCE_INVALID');
+      ensure(evidence.relevant !== false, 'Irrelevant results cannot support a design claim', `${linkPath}/evidenceId`, 'EVIDENCE_IRRELEVANT');
+      ensure(nonempty(link.observation) && nonempty(link.inspiration), 'Separate returned facts from design inference', linkPath);
       const entity = evidence.returnedEntities.find(e => (e.id ?? e.entity_id) === link.entityId);
-      ensure(entity && nonempty(link.observedField), '证据引用缺少实际返回实体与字段', `${linkPath}/entityId`, 'EVIDENCE_ENTITY_INVALID');
+      ensure(entity && nonempty(link.observedField), 'The evidence reference needs an actually returned entity and field', `${linkPath}/entityId`, 'EVIDENCE_ENTITY_INVALID');
       const parts = link.observedField.split('.');
       let actual = entity;
       for (const part of parts) {
-        ensure(actual && typeof actual === 'object' && Object.hasOwn(actual, part), '引用的实际返回字段不存在', `${linkPath}/observedField`, 'EVIDENCE_FIELD_MISSING');
+        ensure(actual && typeof actual === 'object' && Object.hasOwn(actual, part), 'The referenced returned field does not exist', `${linkPath}/observedField`, 'EVIDENCE_FIELD_MISSING');
         actual = actual[part];
       }
-      ensure(JSON.stringify(actual) === JSON.stringify(link.observedValue), '引用字段的值与实际返回不符', `${linkPath}/observedValue`, 'EVIDENCE_VALUE_MISMATCH');
+      ensure(JSON.stringify(actual) === JSON.stringify(link.observedValue), 'The referenced value does not match the actual returned field', `${linkPath}/observedValue`, 'EVIDENCE_VALUE_MISMATCH');
     }
-    if (proposal.phase === 'ready') ensure(concept.evidenceLinks.length > 0, '证据不足时不得标记完成研究；补充精确引用或改为 insufficient_evidence 草案/暂停', `${path}/evidenceLinks`, 'EVIDENCE_INSUFFICIENT');
+    if (proposal.phase === 'ready') ensure(concept.evidenceLinks.length > 0, 'Insufficient evidence cannot complete research. Add exact citations or submit an insufficient_evidence draft or pause', `${path}/evidenceLinks`, 'EVIDENCE_INSUFFICIENT');
   }
-  ensure(organizations.size === 2, '两个概念必须具有不同的参与组织机制', '/concepts', 'MECHANISMS_NOT_DISTINCT');
+  ensure(organizations.size === 2 && mechanisms.size === 2, 'The two concepts must have distinct participation mechanisms beyond their labels', '/concepts', 'MECHANISMS_NOT_DISTINCT');
 }
 
 export function applyProposal(project, proposal) {
   validateProposal(project, proposal);
   if (project.concepts.length) {
-    ensure(project.revisionRequest?.status !== 'running', '局部修改期间禁止使用完整提案工具', '/concepts', 'LOCAL_REVISION_REQUIRED');
+    ensure(project.revisionRequest?.status !== 'running', 'The full proposal tool cannot be used during a partial revision', '/concepts', 'LOCAL_REVISION_REQUIRED');
     ensure(JSON.stringify(proposal.concepts) === JSON.stringify(project.concepts),
-      '已有正式概念只能通过局部待审修改更新', '/concepts', 'LOCAL_REVISION_REQUIRED');
+      'Confirmed concepts can only be updated through a pending partial revision', '/concepts', 'LOCAL_REVISION_REQUIRED');
     project.questions = (proposal.questions ?? []).map(q => ({ id: randomUUID(), field: q.field, text: q.text }));
     project.status = { phase: proposal.phase, detail: proposal.summary };
     return { accepted: true, unchanged: true, projectId: project.id, version: project.version, phase: project.status.phase,
@@ -172,9 +174,9 @@ function revisionEnsure(condition, message, path = '/', code = 'REVISION_INVALID
     code, path, feedback: { code, path, reason: message, correctable: true } });
 }
 function binding(project, { conceptId, baseVersion }) {
-  revisionEnsure(baseVersion === project.version, '基础版本已过期；请基于当前正式版本重新操作', '/baseVersion', 'STALE_PROJECT_VERSION');
-  revisionEnsure(project.concepts.some(concept => concept.id === conceptId), '目标概念不存在', '/conceptId', 'TARGET_NOT_FOUND');
-  revisionEnsure(project.selectedConceptId === conceptId, '目标与当前选中概念不一致', '/conceptId', 'TARGET_MISMATCH');
+  revisionEnsure(baseVersion === project.version, 'The base version is stale. Use the current confirmed version', '/baseVersion', 'STALE_PROJECT_VERSION');
+  revisionEnsure(project.concepts.some(concept => concept.id === conceptId), 'The target concept does not exist', '/conceptId', 'TARGET_NOT_FOUND');
+  revisionEnsure(project.selectedConceptId === conceptId, 'The target does not match the selected concept', '/conceptId', 'TARGET_MISMATCH');
 }
 function rememberVersion(project, revisionId = null) {
   project.versionHistory ??= [];
@@ -183,13 +185,13 @@ function rememberVersion(project, revisionId = null) {
     revisionId, confirmedAt: new Date().toISOString() });
 }
 export function selectConcept(project, input) {
-  revisionEnsure(exactKeys(input, ['conceptId', 'baseVersion']), '选择操作不能指定其他项目或覆盖状态');
-  revisionEnsure(input.baseVersion === project.version, '基础版本已过期；请刷新正式版本', '/baseVersion', 'STALE_PROJECT_VERSION');
-  revisionEnsure(project.concepts.some(concept => concept.id === input.conceptId), '目标概念不存在', '/conceptId', 'TARGET_NOT_FOUND');
+  revisionEnsure(exactKeys(input, ['conceptId', 'baseVersion']), 'Selection cannot specify another project or overwrite state');
+  revisionEnsure(input.baseVersion === project.version, 'The base version is stale. Refresh the confirmed version', '/baseVersion', 'STALE_PROJECT_VERSION');
+  revisionEnsure(project.concepts.some(concept => concept.id === input.conceptId), 'The target concept does not exist', '/conceptId', 'TARGET_NOT_FOUND');
   revisionEnsure(project.selectedConceptId === input.conceptId || !project.revisions?.some(record => record.status === 'pending'),
-    '请先接受或拒绝当前待审修改，再切换概念', '/conceptId', 'PENDING_SELECTION_LOCKED');
+    'Accept or reject the pending revision before switching concepts', '/conceptId', 'PENDING_SELECTION_LOCKED');
   revisionEnsure(project.selectedConceptId === input.conceptId || !project.lockedFields?.length,
-    '已选概念存在锁定内容；请先明确解锁，再切换概念', '/conceptId', 'PENDING_SELECTION_LOCKED');
+    'The selected concept has locked content. Explicitly unlock it before switching', '/conceptId', 'PENDING_SELECTION_LOCKED');
   project.selectedConceptId = input.conceptId;
   project.revisions ??= [];
   rememberVersion(project);
@@ -198,30 +200,30 @@ export function selectConcept(project, input) {
 // Locks bind fields of the selected concept. Unlocking only permits later proposals; it approves nothing.
 export function setFieldLock(project, input) {
   revisionEnsure(exactKeys(input, ['baseVersion', 'field', 'locked']) && typeof input.locked === 'boolean',
-    '锁定操作只能指定正式版本、字段与锁定状态');
-  revisionEnsure(input.baseVersion === project.version, '基础版本已过期；请刷新正式版本', '/baseVersion', 'STALE_PROJECT_VERSION');
-  revisionEnsure(project.selectedConceptId, '请先选择概念，再锁定已确认内容', '/field');
-  revisionEnsure(REVISION_FIELDS.includes(input.field), '该字段不能锁定', '/field');
-  revisionEnsure(project.revisionRequest?.status !== 'running', '当前修改请求仍在处理，不能改变锁定', '/', 'REVISION_IN_PROGRESS');
+    'A lock operation may specify only the confirmed version, field and lock state');
+  revisionEnsure(input.baseVersion === project.version, 'The base version is stale. Refresh the confirmed version', '/baseVersion', 'STALE_PROJECT_VERSION');
+  revisionEnsure(project.selectedConceptId, 'Select a concept before locking confirmed content', '/field');
+  revisionEnsure(REVISION_FIELDS.includes(input.field), 'This field cannot be locked', '/field');
+  revisionEnsure(project.revisionRequest?.status !== 'running', 'The revision is still running; its locks cannot change', '/', 'REVISION_IN_PROGRESS');
   const locked = new Set(project.lockedFields ?? []);
   if (locked.has(input.field) === input.locked) return project;
   if (input.locked) locked.add(input.field); else locked.delete(input.field);
   project.lockedFields = REVISION_FIELDS.filter(field => locked.has(field));
-  const name = { title: '概念名称', coreClaim: '核心主张', mechanism: '参与机制', journey: '体验旅程', productTouchpoints: '产品接触点',
-    evidenceLinks: '文化依据与设计推断', openQuestions: '开放问题', unverifiedEffects: '未验证效果' }[input.field];
-  action(project, 'lock', input.locked ? `锁定 ${name}` : `解锁 ${name}`,
-    input.locked ? '修改提案与接受均不得改动该字段。' : '解锁只允许后续提出修改，不等于批准修改。');
+  const name = { title: 'Concept title', coreClaim: 'Core claim', mechanism: 'Participation mechanism', journey: 'Experience journey', productTouchpoints: 'Product contact',
+    evidenceLinks: 'Cultural evidence and design inference', openQuestions: 'Open questions', unverifiedEffects: 'Unverified effects' }[input.field];
+  action(project, 'lock', input.locked ? `Lock ${name}` : `Unlock ${name}`,
+    input.locked ? 'Neither a proposed nor an accepted revision may change this field.' : 'Unlocking permits a later proposal; it does not approve a change.');
   return project;
 }
 export function beginRevision(project, input) {
-  revisionEnsure(exactKeys(input, ['conceptId', 'baseVersion', 'text', 'offlineFixture']), '局部修改请求只能指定本项目目标、版本、文本与明确离线夹具');
-  revisionEnsure(project.revisionRequest?.status !== 'running', '当前修改请求仍在处理，不能替换', '/', 'REVISION_IN_PROGRESS');
+  revisionEnsure(exactKeys(input, ['conceptId', 'baseVersion', 'text', 'offlineFixture']), 'A partial revision may specify only this project\'s target, version, text and explicit offline fixture');
+  revisionEnsure(project.revisionRequest?.status !== 'running', 'The current revision is still running and cannot be replaced', '/', 'REVISION_IN_PROGRESS');
   revisionEnsure(!project.revisions?.some(record => record.status === 'pending'),
-    '请先接受或拒绝当前待审修改，再提交新请求', '/', 'PENDING_REVISION_EXISTS');
+    'Accept or reject the pending revision before submitting another request', '/', 'PENDING_REVISION_EXISTS');
   binding(project, input);
-  revisionEnsure(nonempty(input.text), '请输入要调整的内容', '/text');
+  revisionEnsure(nonempty(input.text), 'Describe the requested change', '/text');
   revisionEnsure(!input.offlineFixture || project.mode === 'offline' && ['pair_45', 'needs_input', 'conflict', 'invalid_reference'].includes(input.offlineFixture),
-    '仅离线测试可选择明确的修改夹具', '/offlineFixture');
+    'An explicit revision fixture is available only in offline tests', '/offlineFixture');
   project.revisions ??= [];
   rememberVersion(project);
   const previous = project.revisionRequest;
@@ -234,7 +236,7 @@ export function beginRevision(project, input) {
 }
 export function pendingRevisionDraft(project, revision) {
   const target = project.concepts.find(concept => concept.id === revision.targetConceptId);
-  revisionEnsure(target, '待审修改的目标概念不存在', '/revisionId', 'TARGET_NOT_FOUND');
+  revisionEnsure(target, 'The pending revision\'s target concept does not exist', '/revisionId', 'TARGET_NOT_FOUND');
   return { ...structuredClone(target), ...Object.fromEntries(revision.changes.map(change => [change.field, structuredClone(change.after)])) };
 }
 export function revisionFingerprint(revision) {
@@ -248,20 +250,20 @@ function checkedFeedbackSource(project, request) {
   const source = project.revisions?.find(record => record.id === request.sourceRevisionId && record.projectId === project.id);
   revisionEnsure(source?.status === 'pending' && numberOfRevision(project, source) === request.sourceRevisionNumber
     && revisionFingerprint(source) === request.sourceFingerprint,
-  '反馈对应的待审稿已改变或失效；请刷新后基于当前待审稿重试', '/revisionId', 'STALE_PENDING_REVISION');
+  'The pending draft has changed or expired. Refresh and retry against the current draft', '/revisionId', 'STALE_PENDING_REVISION');
   binding(project, { conceptId: source.targetConceptId, baseVersion: request.baseVersion });
-  revisionEnsure(source.baseVersion === project.version, '待审修改的基础版本已过期', '/baseVersion', 'STALE_PROJECT_VERSION');
+  revisionEnsure(source.baseVersion === project.version, 'The pending revision\'s base version is stale', '/baseVersion', 'STALE_PROJECT_VERSION');
   const target = project.concepts.find(concept => concept.id === source.targetConceptId);
   revisionEnsure(source.changes.every(change => REVISION_FIELDS.includes(change.field) && same(target[change.field], change.before)),
-    '正式内容已改变；原待审稿不能作为反馈基础', '/changes', 'STALE_PROJECT_VERSION');
+    'Confirmed content has changed. The old pending draft cannot be the feedback basis', '/changes', 'STALE_PROJECT_VERSION');
   return source;
 }
 export function beginPendingFeedback(project, revisionId, input) {
-  revisionEnsure(exactKeys(input, ['baseVersion', 'text']), '待审反馈只能指定正式版本与反馈文本');
-  revisionEnsure(project.revisionRequest?.status !== 'running', '当前修改请求仍在处理，不能替换', '/', 'REVISION_IN_PROGRESS');
-  revisionEnsure(nonempty(input.text), '请输入对待审稿的反馈', '/text');
+  revisionEnsure(exactKeys(input, ['baseVersion', 'text']), 'Pending feedback may specify only the confirmed version and feedback text');
+  revisionEnsure(project.revisionRequest?.status !== 'running', 'The current revision is still running and cannot be replaced', '/', 'REVISION_IN_PROGRESS');
+  revisionEnsure(nonempty(input.text), 'Enter feedback on the pending draft', '/text');
   const source = project.revisions?.find(record => record.id === revisionId && record.projectId === project.id);
-  revisionEnsure(source?.status === 'pending', '反馈对应的待审稿已改变或失效', '/revisionId', 'STALE_PENDING_REVISION');
+  revisionEnsure(source?.status === 'pending', 'The pending draft for this feedback has changed or expired', '/revisionId', 'STALE_PENDING_REVISION');
   const previous = project.revisionRequest;
   const request = { id: randomUUID(), kind: 'pending_feedback', targetConceptId: source.targetConceptId,
     baseVersion: input.baseVersion, text: input.text.trim(), status: 'running', createdAt: new Date().toISOString(),
@@ -288,22 +290,22 @@ export function finishRevisionRequest(project, request, status, detail, revision
 }
 function checkedEvidenceRef(project, link, path) {
   revisionEnsure(exactKeys(link, ['evidenceId', 'entityId', 'observedField', 'observedValue', 'observation', 'inspiration', 'basis']),
-    '证据引用含未允许字段', path);
+    'The evidence reference contains a forbidden field', path);
   const card = project.evidence.find(record => record.id === link.evidenceId && record.projectId === project.id);
-  revisionEnsure(card && card.relevant !== false, '证据不存在、跨项目或已标为无关', `${path}/evidenceId`, 'EVIDENCE_REFERENCE_INVALID');
+  revisionEnsure(card && card.relevant !== false, 'The evidence is missing, belongs to another project or is marked irrelevant', `${path}/evidenceId`, 'EVIDENCE_REFERENCE_INVALID');
   const entity = card.returnedEntities?.find(record => (record.id ?? record.entity_id) === link.entityId);
-  revisionEnsure(entity && nonempty(link.observedField), '证据未返回该实体或字段', `${path}/entityId`, 'EVIDENCE_ENTITY_INVALID');
+  revisionEnsure(entity && nonempty(link.observedField), 'The evidence did not return this entity or field', `${path}/entityId`, 'EVIDENCE_ENTITY_INVALID');
   const parts = link.observedField.split('.');
   let actual = entity;
   for (const part of parts) {
     revisionEnsure(!['__proto__', 'prototype', 'constructor'].includes(part) && actual && typeof actual === 'object'
-      && Object.hasOwn(actual, part), '证据实际返回中不存在该字段', `${path}/observedField`, 'EVIDENCE_FIELD_MISSING');
+      && Object.hasOwn(actual, part), 'This field does not exist in the actual evidence return', `${path}/observedField`, 'EVIDENCE_FIELD_MISSING');
     actual = actual[part];
   }
-  revisionEnsure(same(actual, link.observedValue), '引用值与证据实际返回不一致', `${path}/observedValue`, 'EVIDENCE_VALUE_MISMATCH');
+  revisionEnsure(same(actual, link.observedValue), 'The cited value does not match the actual evidence return', `${path}/observedValue`, 'EVIDENCE_VALUE_MISMATCH');
   const basis = /^(short_|long_)?description$/.test(parts.at(-1)) ? 'description' : parts.at(-1) === 'affinity' ? 'affinity' : 'returned_field';
-  revisionEnsure(!link.basis || link.basis === basis, '描述与文化亲和关联的证据类型不可互换', `${path}/basis`, 'EVIDENCE_BASIS_MISMATCH');
-  revisionEnsure(nonempty(link.inspiration), '请说明设计推断并保留未验证边界', `${path}/inspiration`);
+  revisionEnsure(!link.basis || link.basis === basis, 'Description and cultural affinity evidence are not interchangeable', `${path}/basis`, 'EVIDENCE_BASIS_MISMATCH');
+  revisionEnsure(nonempty(link.inspiration), 'Explain the design inference and preserve the unverified boundary', `${path}/inspiration`);
   return { evidenceId: link.evidenceId, entityId: link.entityId, observedField: link.observedField,
     observedValue: structuredClone(actual), basis,
   observation: `Returned ${link.observedField} = ${JSON.stringify(actual)}. ${basis === 'affinity'
@@ -313,62 +315,62 @@ function checkedEvidenceRef(project, link, path) {
 }
 function checkRevisionField(project, field, after, before, path) {
   const ensureShape = (condition, message) => revisionEnsure(condition, message, path, 'REVISION_SCHEMA_INVALID');
-  if (['title', 'coreClaim'].includes(field)) ensureShape(nonempty(after), '修改后的文字不能为空');
+  if (['title', 'coreClaim'].includes(field)) ensureShape(nonempty(after), 'Revised text cannot be empty');
   else if (field === 'mechanism') ensureShape(exactKeys(after, ['organization', 'description'])
-    && nonempty(after.organization) && nonempty(after.description), '参与机制必须包含组织方式与说明');
+    && nonempty(after.organization) && nonempty(after.description), 'The participation mechanism needs an organization and description');
   else if (field === 'journey') ensureShape(Array.isArray(after) && after.length >= 3
-    && after.every(step => exactKeys(step, ['stage', 'action']) && nonempty(step.stage) && nonempty(step.action)), '体验旅程需包含至少三个有效阶段');
+    && after.every(step => exactKeys(step, ['stage', 'action']) && nonempty(step.stage) && nonempty(step.action)), 'The experience journey needs at least three valid stages');
   else if (field === 'evidenceLinks') {
-    ensureShape(Array.isArray(after), '概念证据引用必须为数组');
+    ensureShape(Array.isArray(after), 'Concept evidence references must be an array');
     // Historical links are preserved byte-for-byte; only newly supplied links are checked.
     return after.map((link, index) => before.some(old => same(old, link)) ? structuredClone(link)
       : checkedEvidenceRef(project, link, `${path}/${index}`));
-  } else ensureShape(stringArray(after) && (!['productTouchpoints', 'unverifiedEffects'].includes(field) || after.length > 0), '修改后的条目格式无效或缺少必要内容');
+  } else ensureShape(stringArray(after) && (!['productTouchpoints', 'unverifiedEffects'].includes(field) || after.length > 0), 'Revised entries have an invalid format or lack required content');
   return structuredClone(after);
 }
 export function proposeRevision(project, input) {
-  revisionEnsure(exactKeys(input, ['requestId', 'phase', 'summary', 'question', 'changes', 'impact', 'unknowns']), '局部修改工具不能指定项目、目标、版本或覆盖项目', '/');
+  revisionEnsure(exactKeys(input, ['requestId', 'phase', 'summary', 'question', 'changes', 'impact', 'unknowns']), 'The partial revision tool cannot specify a project, target or version, or overwrite the project', '/');
   const request = project.revisionRequest;
-  revisionEnsure(request && request.status === 'running' && input.requestId === request.id, '修改请求不存在或已结束', '/requestId', 'REVISION_REQUEST_MISMATCH');
+  revisionEnsure(request && request.status === 'running' && input.requestId === request.id, 'The revision request is missing or has ended', '/requestId', 'REVISION_REQUEST_MISMATCH');
   binding(project, { conceptId: request.targetConceptId, baseVersion: request.baseVersion });
   const source = request.kind === 'pending_feedback' ? checkedFeedbackSource(project, request) : null;
-  revisionEnsure(['pending', 'needs_input', 'conflict'].includes(input.phase) && nonempty(input.summary), '修改状态或说明无效', '/phase');
-  revisionEnsure(Array.isArray(input.changes) && stringArray(input.impact) && stringArray(input.unknowns), '修改、影响与未知项须为数组', '/changes');
+  revisionEnsure(['pending', 'needs_input', 'conflict'].includes(input.phase) && nonempty(input.summary), 'Invalid revision phase or summary', '/phase');
+  revisionEnsure(Array.isArray(input.changes) && stringArray(input.impact) && stringArray(input.unknowns), 'Changes, impact and unknowns must be arrays', '/changes');
   if (input.phase !== 'pending') {
-    revisionEnsure(input.changes.length === 0 && nonempty(input.question), '待澄清或冲突须提出一个问题，不能同时修改', '/question');
+    revisionEnsure(input.changes.length === 0 && nonempty(input.question), 'A clarification or conflict must ask one question without changes', '/question');
     finishRevisionRequest(project, request, input.phase, input.summary); request.question = input.question;
     const feedback = project.revisionFeedback?.find(record => record.id === request.feedbackId);
     if (feedback) feedback.question = input.question;
     project.status = { phase: input.phase === 'conflict' ? 'revision_conflict' : 'revision_needs_input', detail: input.summary };
     return { status: input.phase, question: input.question };
   }
-  revisionEnsure(input.changes.length > 0 && input.unknowns.length > 0, '待审修改需包含实际差异与未知项', '/changes');
+  revisionEnsure(input.changes.length > 0 && input.unknowns.length > 0, 'A pending revision needs actual differences and unknowns', '/changes');
   const target = project.concepts.find(concept => concept.id === request.targetConceptId);
   const draft = source ? pendingRevisionDraft(project, source) : target;
   const changed = new Set();
   const changes = input.changes.map((change, index) => {
     const path = `/changes/${index}`;
-    revisionEnsure(exactKeys(change, ['field', 'after', 'reason', 'evidenceRefs']), '修改只允许字段、修改后内容、理由及证据引用；修改前内容由服务端读取', path);
-    revisionEnsure(REVISION_FIELDS.includes(change.field) && !changed.has(change.field), '目标字段不允许修改或重复', `${path}/field`, 'REVISION_FIELD_NOT_ALLOWED');
-    revisionEnsure(!(project.lockedFields ?? []).includes(change.field), '请求涉及锁定字段，需先由用户明确解锁', `${path}/field`, 'FIELD_LOCKED');
+    revisionEnsure(exactKeys(change, ['field', 'after', 'reason', 'evidenceRefs']), 'Each change may contain only field, after, reason and evidenceRefs; the server reads the prior content', path);
+    revisionEnsure(REVISION_FIELDS.includes(change.field) && !changed.has(change.field), 'The target field is forbidden or repeated', `${path}/field`, 'REVISION_FIELD_NOT_ALLOWED');
+    revisionEnsure(!(project.lockedFields ?? []).includes(change.field), 'The request touches a locked field. The user must explicitly unlock it first', `${path}/field`, 'FIELD_LOCKED');
     changed.add(change.field);
-    revisionEnsure(nonempty(change.reason) && Array.isArray(change.evidenceRefs), '每项修改须说明理由与实际证据引用', path);
+    revisionEnsure(nonempty(change.reason) && Array.isArray(change.evidenceRefs), 'Each change needs a reason and actual evidence references', path);
     const before = structuredClone(draft[change.field]);
     const after = checkRevisionField(project, change.field, change.after, before, `${path}/after`);
-    revisionEnsure(!same(before, after), source ? '反馈修改必须与当前待审稿有实际差异' : '待审修改必须与正式内容有实际差异', `${path}/after`);
+    revisionEnsure(!same(before, after), source ? 'A feedback revision must differ from the current pending draft' : 'A pending revision must differ from confirmed content', `${path}/after`);
     return { field: change.field, before, after, reason: change.reason,
       evidenceRefs: change.evidenceRefs.map((link, i) => checkedEvidenceRef(project, link, `${path}/evidenceRefs/${i}`)) };
   });
   const candidate = { ...draft, ...Object.fromEntries(changes.map(change => [change.field, change.after])) };
   const consolidated = source ? REVISION_FIELDS.filter(field => !same(target[field], candidate[field])).map(field => {
     const change = changes.find(item => item.field === field) ?? source.changes.find(item => item.field === field);
-    revisionEnsure(!(project.lockedFields ?? []).includes(field), '合并后的待审稿包含锁定字段，需由用户先明确解锁', '/changes', 'FIELD_LOCKED');
+    revisionEnsure(!(project.lockedFields ?? []).includes(field), 'The merged pending draft touches a locked field. The user must explicitly unlock it first', '/changes', 'FIELD_LOCKED');
     return { ...structuredClone(change), field, before: structuredClone(target[field]), after: structuredClone(candidate[field]) };
   }) : changes;
-  revisionEnsure(consolidated.length > 0, '修订后的待审稿须与正式内容有实际差异；如需撤回请明确拒绝待审稿', '/changes');
+  revisionEnsure(consolidated.length > 0, 'The revised pending draft must differ from confirmed content. Explicitly reject the draft to withdraw it', '/changes');
   const active = [candidate.coreClaim, candidate.mechanism.description,
     ...candidate.journey.map(step => step.action), ...candidate.productTouchpoints].join(' ');
-  for (const required of project.brief.mustKeep) revisionEnsure(active.includes(required), '局部修改丢失必须保留项', '/changes', 'REQUIRED_ITEM_MISSING');
+  for (const required of project.brief.mustKeep) revisionEnsure(active.includes(required), 'The partial revision loses a must-keep item', '/changes', 'REQUIRED_ITEM_MISSING');
   checkForbiddenItems(candidate, project.brief.avoid, field => {
     const [key, ...parts] = field.split('/'), suffix = parts.length ? `/${parts.join('/')}` : '';
     const index = changes.findIndex(change => change.field === key);
@@ -390,30 +392,30 @@ export function proposeRevision(project, input) {
   return revision;
 }
 export function decideRevision(project, revisionId, decision, input) {
-  revisionEnsure(exactKeys(input, ['baseVersion']), '审查操作只能提交当前正式版本');
-  revisionEnsure(Number.isInteger(input.baseVersion), '审查操作须提供显示中的基础版本', '/baseVersion');
-  revisionEnsure(['accept', 'reject'].includes(decision), '未知的审查操作');
+  revisionEnsure(exactKeys(input, ['baseVersion']), 'A review may submit only the current confirmed version');
+  revisionEnsure(Number.isInteger(input.baseVersion), 'A review must provide the displayed base version', '/baseVersion');
+  revisionEnsure(['accept', 'reject'].includes(decision), 'Unknown review decision');
   const revision = project.revisions?.find(record => record.id === revisionId && record.projectId === project.id);
-  revisionEnsure(revision, '待审修改不存在', '/revisionId', 'REVISION_NOT_FOUND');
-  revisionEnsure(revision.status === 'pending', '该修改已处理，不能重复批准或拒绝', '/revisionId', 'REVISION_ALREADY_DECIDED');
+  revisionEnsure(revision, 'The pending revision does not exist', '/revisionId', 'REVISION_NOT_FOUND');
+  revisionEnsure(revision.status === 'pending', 'This revision has already been decided and cannot be accepted or rejected again', '/revisionId', 'REVISION_ALREADY_DECIDED');
   revisionEnsure(!(project.revisionRequest?.status === 'running' && project.revisionRequest.kind === 'pending_feedback'
-    && project.revisionRequest.sourceRevisionId === revision.id), '正在根据反馈修订此待审稿，请等待处理结束后再审查', '/revisionId', 'REVISION_IN_PROGRESS');
+    && project.revisionRequest.sourceRevisionId === revision.id), 'This draft is being revised from feedback. Wait for completion before reviewing', '/revisionId', 'REVISION_IN_PROGRESS');
   if (decision === 'reject') {
     // Rejection never applies changes. Older clients may have left pending
     // records whose target, before values or base version can no longer apply.
     revision.status = 'rejected';
     revision.decidedAt = new Date().toISOString();
     if (!project.revisions.some(record => record.status === 'pending') && project.revisionRequest?.status !== 'running')
-      project.status = { phase: 'ready', detail: '已拒绝待审修改；正式版本保持不变' };
+      project.status = { phase: 'ready', detail: 'The pending revision was rejected. The confirmed version is unchanged' };
     return project;
   }
   revisionEnsure(input.baseVersion === project.version && revision.baseVersion === project.version,
-    '待审修改的基础版本已过期；正式版保持不变', '/baseVersion', 'STALE_PROJECT_VERSION');
+    'The pending revision\'s base version is stale. The confirmed version is unchanged', '/baseVersion', 'STALE_PROJECT_VERSION');
   binding(project, { conceptId: revision.targetConceptId, baseVersion: revision.baseVersion });
   const target = project.concepts.find(concept => concept.id === revision.targetConceptId);
   for (const change of revision.changes) {
-    revisionEnsure(REVISION_FIELDS.includes(change.field) && same(target[change.field], change.before), '正式内容已改变；请重新提出修改', '/changes', 'STALE_PROJECT_VERSION');
-    revisionEnsure(!(project.lockedFields ?? []).includes(change.field), '目标字段已锁定；正式版保持不变', '/changes', 'FIELD_LOCKED');
+    revisionEnsure(REVISION_FIELDS.includes(change.field) && same(target[change.field], change.before), 'Confirmed content has changed. Propose a new revision', '/changes', 'STALE_PROJECT_VERSION');
+    revisionEnsure(!(project.lockedFields ?? []).includes(change.field), 'The target field is locked. The confirmed version is unchanged', '/changes', 'FIELD_LOCKED');
   }
   for (const change of revision.changes) target[change.field] = structuredClone(change.after);
   project.version++;
@@ -421,7 +423,7 @@ export function decideRevision(project, revisionId, decision, input) {
   rememberVersion(project, revision.id);
   revision.status = 'accepted';
   revision.decidedAt = new Date().toISOString();
-  project.status = { phase: 'ready', detail: '局部修改已批准为正式版本' };
+  project.status = { phase: 'ready', detail: 'The partial revision was accepted as the confirmed version' };
   return project;
 }
 
@@ -429,9 +431,12 @@ export function configStatus(env = process.env) {
   const required = ['ART_MODEL_PROVIDER', 'ART_MODEL_ID', 'ART_MODEL_API', 'ART_MODEL_BASE_URL', 'ART_MODEL_API_KEY', 'QLOO_API_KEY', 'QLOO_API_URL'];
   const missing = required.filter(name => !env[name]?.trim());
   const enabled = env.ART_ENABLE_LIVE === 'true';
-  return { modes: { offline: { available: true, synthetic: true },
+  const production = env.VERCEL_ENV !== undefined ? !['preview', 'development'].includes(env.VERCEL_ENV) : env.NODE_ENV === 'production';
+  return { production, modes: { offline: { available: !production, synthetic: true },
     live: { available: enabled && missing.length === 0, enabled, missing,
       modelKeyPresent: Boolean(env.ART_MODEL_API_KEY), qlooKeyPresent: Boolean(env.QLOO_API_KEY),
-      detail: enabled ? '真实模式仍需使用明确提供商、模型与端点，并在总额度内执行' : '真实模式未获单独启用；本地离线演示可用' } },
+      detail: enabled ? 'Live mode requires an explicit provider, model and endpoint, and stays within the total budget'
+        : production ? 'Live generation is disabled. Saved projects remain readable; synthetic generation is unavailable.'
+          : 'Live mode has not been separately enabled. The local offline demo is available' } },
     runtime: { name: '@qloo/qloo-harness', version: '0.1.26' }, limits: LIMITS, serverLimits: SERVER_LIMITS };
 }

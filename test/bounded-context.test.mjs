@@ -250,7 +250,8 @@ test('bounded exact-field reads and corrected references reach the actual propos
       observedValue: card.returnedEntities[0].properties.description, observation: 'Synthetic exact observation', inspiration: 'Synthetic design inference; effects unknown' };
     return [{ type: 'toolCall', id: `proposal-${round}`, name: 'propose_design_response', arguments: { baseVersion: project.version,
       phase: 'ready', summary: 'Synthetic bounded dispatch proposal', concepts: ['one', 'two'].map(id => ({ id, title: id,
-        coreClaim: '触摸样本并记录观察', mechanism: { organization: id, description: '触摸样本并记录观察' },
+        coreClaim: '触摸样本并记录观察', mechanism: { organization: id, description: id === 'one'
+          ? '小组按固定轮次触摸样本并互相记录观察' : '个人自选顺序触摸样本并独立记录观察' },
         journey: ['到场', '参与', '带走'].map(stage => ({ stage, action: '触摸样本并记录观察' })), productTouchpoints: ['触摸样本'],
         evidenceLinks: [link], openQuestions: ['容量未知'], unverifiedEffects: ['效果未知'] })) } }];
   } });

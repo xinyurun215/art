@@ -1,4 +1,5 @@
 import test, { after } from 'node:test';
+import { createAndStart, creationInput } from './project-http.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -99,7 +100,7 @@ test('replacement EPERM keeps saved authority and counters; normal retry applies
   assert.equal(injected.failures, 1);
   assert.equal(fs.readFileSync(path, 'utf8'), before);
   assert.deepEqual(app.projects.get(seed.id), JSON.parse(before).project);
-  assert.equal(failed.status, 503); assert.equal(failed.code, 'PROJECT_SAVE_FAILED'); assert.match(failed.error, /未保存/);
+  assert.equal(failed.status, 503); assert.equal(failed.code, 'PROJECT_SAVE_FAILED'); assert.match(failed.error, /was not saved/);
   assert.deepEqual((await call(port, 'GET', route)).project, JSON.parse(before).project);
   assert.equal(fs.readFileSync(join(f.dataDir, '.http-budget', 'run.json'), 'utf8'), ledger);
   assert.equal(seed.version, 2); assert.equal(seed.clarifications.length, 0); assert.equal(seed.usage.modelCalls, 0);
@@ -167,7 +168,7 @@ test('all shared HTTP writers preserve authority on replacement failure, includi
     assert.equal(project.usage.modelCalls, 0, endpoint);
   }
   const count = app.projects.size;
-  assert.equal((await call(port, 'POST', '/api/projects', { mode: 'offline', brief })).code, 'PROJECT_SAVE_FAILED');
+  assert.equal((await call(port, 'POST', '/api/projects', creationInput({ mode: 'offline', brief }))).code, 'PROJECT_SAVE_FAILED');
   assert.equal(app.projects.size, count, 'failed new projects are not published or queued');
   assert.equal(injected.failures, cases.length + 1);
   assert.equal(f.modelCallbacks, 0);
@@ -186,7 +187,7 @@ test('a request paused while reading its body rechecks busy and cannot overwrite
   } } };
   const app = f.start(), seed = readyProject(); app.saveProject(seed);
   const port = await listen(app), route = `/api/projects/${seed.id}`;
-  await call(port, 'POST', '/api/projects', { mode: 'offline', brief });
+  await createAndStart((...args) => call(port, ...args), { mode: 'offline', brief });
   await entered;
   let delayed;
   const response = new Promise((done, reject) => {

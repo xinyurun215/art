@@ -4,15 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>Art · experience proposal workspace</title>
+  <title>TasteStage · experience proposal workspace</title>
+  <meta name="description" content="TasteStage turns a brand pop-up brief and cultural evidence into two early experience proposals, with reviewable revisions and export.">
   <link rel="stylesheet" href="/styles.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#proposal-board">Skip to the proposal board</a>
   <header class="app-header">
-    <a class="wordmark" href="/" aria-label="Art experience proposal workspace home"><span class="art-word">Art<span class="art-period">.</span></span><span class="wordmark-divider" aria-hidden="true"></span><span>Experience workspace<small>Brand pop-up design</small></span></a>
+    <a class="wordmark" href="/" aria-label="TasteStage experience proposal workspace home"><span class="art-word">TasteStage<span class="art-period">.</span></span><span class="wordmark-divider" aria-hidden="true"></span><span>Experience workspace<small>Brand pop-up design</small></span></a>
     <div class="header-status" role="status"><span class="status-dot" aria-hidden="true"></span><span id="test-label">Connecting…</span></div>
+    <nav class="case-links" aria-label="Projects and recorded case"><a id="view-completed-case" href="/?case=completed">View completed case</a><a id="create-own-project" href="/?new=1" hidden>Create your own project</a></nav>
   </header>
   <div id="connection-error" class="connection-error" role="alert" hidden></div>
 
@@ -23,7 +25,7 @@
         <summary><span class="rail-add" aria-hidden="true">＋</span><span><strong id="brief-heading">Start from a brief</strong><small>New independent project</small></span></summary>
         <div class="brief-disclosure-body">
         <p class="section-description">Write what you already know. The agent asks only when a gap would change the next step.</p>
-        <div class="demo-controls"><span>Load an example</span><button type="button" class="chip-button" id="load-demo">Complete brief</button><button type="button" class="chip-button" id="load-ambiguous">Brief that needs a question</button></div>
+        <div class="demo-controls" id="development-demo-controls" data-development-control hidden><span>Load an example</span><button type="button" class="chip-button" id="load-demo">Complete brief</button><button type="button" class="chip-button" id="load-ambiguous">Brief that needs a question</button></div>
         <form id="brief-form">
           <label class="field-label" for="request">What should this be <span>Required</span></label>
           <textarea id="request" name="request" rows="5" required placeholder="For example: design a pop-up for a new sneaker line so visitors understand the product by trying it on. Write any conditions that are still open."></textarea>
@@ -39,7 +41,7 @@
               <div class="full"><label class="field-label" for="avoid">Do not / avoid</label><input id="avoid" name="avoid" placeholder="For example: a live performance, forced signup"></div>
             </div>
           </details>
-          <div class="mode-field"><label class="field-label" for="mode">Research mode</label><select id="mode"><option value="offline">Demo · synthetic data</option><option value="live" disabled>Live research · not ready</option></select></div>
+          <div class="mode-field" id="development-mode-controls" data-development-control hidden><label class="field-label" for="mode">Research mode</label><select id="mode"><option value="offline">Demo · synthetic data</option><option value="live" selected disabled>Live research · not ready</option></select></div>
           <button class="primary-button" id="create-project" type="submit"><span>Start research</span><span aria-hidden="true">↗</span></button>
           <p class="form-note" id="create-note">What you type is kept as client-provided information. It has not been independently verified.</p>
         </form>
@@ -63,6 +65,8 @@
     <section class="proposal-board" id="proposal-board" aria-labelledby="board-heading" tabindex="-1">
       <div class="board-heading-row"><div><p class="eyebrow">Early experience proposal</p><h2 id="board-heading">The next experience starts here.</h2><p class="board-subtitle" id="board-subtitle">Keep the brief, cultural evidence, and design choices on one board.</p><p class="mode-note" id="mode-explanation"></p></div><div class="board-tools"><div class="version-stamp" id="version-stamp">No project yet</div><button type="button" class="export-button" id="export-proposal" hidden><span aria-hidden="true">↓</span>Export proposal</button></div></div>
       <div class="project-status" id="project-status" role="status" aria-live="polite"><div class="status-overview"><span class="phase-mark" aria-hidden="true"></span><div class="status-copy"><strong>The workspace is ready</strong><p>Write a brief. Research evidence and two different ways to participate will appear here.</p></div></div></div>
+      <button id="start-project" class="primary-button" type="button" hidden><span>Start this saved project</span><span aria-hidden="true">↗</span></button>
+      <section id="case-provenance" class="case-provenance" aria-label="Recorded case provenance" hidden></section>
       <div id="project-context"></div>
       <section id="questions-panel" class="questions-panel" aria-labelledby="questions-heading" hidden></section>
 

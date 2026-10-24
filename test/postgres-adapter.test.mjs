@@ -10,6 +10,7 @@ import { createFunctionHandler } from '../api/index.mjs';
 import { createProject } from '../app/state.mjs';
 import { bindDatabaseBudget, budgetedFetch, remainingBudget, validationRun, withHttpBudget } from '../app/transport.mjs';
 import { unresolvedResearch } from '../app/context.mjs';
+import { createAndStart, creationInput } from './project-http.mjs';
 
 test('public judge domain creates and restores isolated guest projects through the real runtime with fake model HTTP', async t => {
   const configured = { ...env, VERCEL_ENV: 'production', ART_ENABLE_LIVE: 'true', ART_MODEL_PROVIDER: 'deepseek',
@@ -58,18 +59,22 @@ test('public judge domain creates and restores isolated guest projects through t
   for (const change of [{ Origin: 'https://other.invalid' }, { Origin: 'http://art-lovat-two.vercel.app' }, { 'Content-Type': 'text/plain' }])
     assert.equal((await first('POST', '/api/projects', { brief, mode: 'live' }, null, { ...headers, ...change })).status, 403);
   assert.equal((await first('POST', '/api/projects', { brief: { request: 'x'.repeat(33000) } }, null, headers)).status, 400);
-  const created = await first('POST', '/api/projects', { brief, mode: 'live', guestOwner: 'attacker' }, null, headers);
-  assert.equal(created.status, 200); assert.equal(created.body.project.mode, 'live'); assert.equal(sends, 1);
+  const created = await first('POST', '/api/projects', creationInput({ brief, mode: 'live', guestOwner: 'attacker' }), null, headers);
+  assert.equal(created.status, 201); assert.equal(created.body.project.mode, 'live'); assert.equal(sends, 0);
   const cookie = created.headers['set-cookie'][0];
   assert.match(cookie, /^__Host-art-guest=[a-f0-9]{64}; Path=\/; Secure; HttpOnly; SameSite=Lax;/);
   const ownHeaders = { ...headers, Cookie: cookie.split(';')[0] };
+  created.body = (await first('POST', `/api/projects/${created.body.project.id}/start`, {}, null, ownHeaders)).body;
+  assert.equal(sends, 1);
   const id = created.body.project.id, owner = records.get(id).guestOwner;
   assert.equal(created.text.includes(owner), false); assert.equal(created.body.project.guestOwner, undefined);
   assert.equal(created.text.includes('private-lease'), false); assert.equal(created.body.project.usage.qlooHttpAttempts, 0);
   assert.deepEqual((await second('GET', `/api/projects/${id}`, null, null, ownHeaders)).body.project, created.body.project);
-  const other = await second('POST', '/api/projects', { brief, mode: 'live' }, null, headers);
-  assert.equal(other.status, 200); assert.equal(sends, 2);
+  const other = await second('POST', '/api/projects', creationInput({ brief, mode: 'live' }), null, headers);
+  assert.equal(other.status, 201); assert.equal(sends, 1);
   const otherHeaders = { ...headers, Cookie: other.headers['set-cookie'][0].split(';')[0] };
+  await second('POST', `/api/projects/${other.body.project.id}/start`, {}, null, otherHeaders);
+  assert.equal(sends, 2);
   for (const deniedHeaders of [headers, otherHeaders, { ...headers, Cookie: '__Host-art-guest=invalid' }]) {
     for (const path of [`/api/projects/${id}`, `/api/projects/${historical.id}`]) {
       assert.equal((await second('GET', path, null, null, deniedHeaders)).status, 404);
@@ -164,7 +169,7 @@ sqlTest('function HTTP routes await the official offline runtime, protect access
   const config = await first('GET', '/api/config');
   assert.equal(config.status, 200); assert.equal(config.body.modes.live.available, false);
   for (const secret of Object.values(env).filter(value => value.includes('secret'))) assert.equal(config.text.includes(secret), false);
-  const created = await first('POST', '/api/projects', { brief, mode: 'offline' });
+  const created = await createAndStart(first, { brief, mode: 'offline' });
   assert.equal(created.status, 200); assert.equal(created.body.project.status.phase, 'ready');
   assert.equal(created.body.project.concepts.length, 2);
   assert.equal(created.body.project.runtime.runs[0].status, 'completed');
@@ -276,7 +281,7 @@ sqlTest('a real SQL save failure publishes nothing and never starts a runtime', 
     runtimeFactory: async () => { runtimeStarts++; throw new Error('must not start'); } });
   t.after(() => app.dispose());
   const call = await serve(t, app.handler);
-  const response = await call('POST', '/api/projects', { brief });
+  const response = await call('POST', '/api/projects', creationInput({ brief }));
   assert.equal(response.status, 503); assert.equal(response.body.code, 'PROJECT_STORE_UNAVAILABLE');
   assert.equal(runtimeStarts, 0); assert.equal(app.projects.size, 0);
   assert.equal((await pools[0].query('SELECT * FROM art_projects')).rowCount, 0);
@@ -300,7 +305,7 @@ sqlTest('real SQL reserves shared caps and request records atomically across sto
   saved.status.phase = 'ready'; await stores[0].save(saved, { token: active.token });
   const next = await stores[1].save(createProject({ brief, mode: 'live' }), { start: true });
   bindDatabaseBudget(next.project, stores[1], next.token);
-  await assert.rejects(() => withHttpBudget(next.project, 'model', 'https://model.invalid', () => fake('https://model.invalid/v1')), /未发送请求/);
+  await assert.rejects(() => withHttpBudget(next.project, 'model', 'https://model.invalid', () => fake('https://model.invalid/v1')), /[Nn]o request was sent/);
   assert.equal(sends, 1);
   assert.equal((await pools[0].query('SELECT usage FROM art_budget_runs')).rows[0].usage.modelHttpAttempts, 1);
 });
@@ -339,11 +344,11 @@ sqlTest('SQL reservation faults block all later egress and roll back counters', 
   let sends = 0;
   const fake = budgetedFetch(async () => { sends++; return new Response('{}', { status: 429 }); });
   const send = () => withHttpBudget(active.project, 'model', 'https://model.invalid', () => fake('https://model.invalid/v1'));
-  await assert.rejects(send, /未发送请求/); assert.equal(sends, 0);
+  await assert.rejects(send, /[Nn]o request was sent/); assert.equal(sends, 0);
   assert.equal((await stores[1].get(active.project.id)).usage.modelHttpAttempts, 0);
   assert.equal((await pools[0].query('SELECT usage FROM art_budget_runs')).rows[0].usage.modelHttpAttempts, 0);
   await pools[0].query('DROP TRIGGER reject_attempt ON art_http_attempts');
-  await assert.rejects(send, /禁止自动重复/); assert.equal(sends, 0);
+  await assert.rejects(send, /Automatic repeat sends are forbidden/); assert.equal(sends, 0);
 });
 
 sqlTest('a provider HTTP failure cannot automatically retry and consume another reservation', async t => {
@@ -354,7 +359,7 @@ sqlTest('a provider HTTP failure cannot automatically retry and consume another 
   const fake = budgetedFetch(async () => { sends++; return new Response('{}', { status: 429 }); });
   const send = () => withHttpBudget(active.project, 'model', 'https://model.invalid', () => fake('https://model.invalid/v1'));
   assert.equal((await send()).status, 429); assert.equal(sends, 1);
-  await assert.rejects(send, /禁止自动重复/); assert.equal(sends, 1);
+  await assert.rejects(send, /Automatic repeat sends are forbidden/); assert.equal(sends, 1);
   assert.equal((await stores[1].get(active.project.id)).usage.modelHttpAttempts, 1);
 });
 
@@ -383,8 +388,8 @@ sqlTest('a bounded function request saves interrupted and refuses competing exec
   const call = await serve(t, createFunctionHandler({ env, store: stores[0], maxRunMs: 100,
     runtimeFactory: async () => ({ submit: () => { entered(); return new Promise((_, reject) => { rejectSubmit = reject; }); },
       abort: async () => { rejectSubmit(Object.assign(new Error('deadline'), { code: 'RUN_INTERRUPTED' })); }, dispose: async () => {} }) }));
-  const first = call('POST', '/api/projects', { brief }); await started;
-  const competition = await call('POST', '/api/projects', { brief });
+  const first = createAndStart(call, { brief }); await started;
+  const competition = await createAndStart(call, { brief });
   assert.equal(competition.status, 409); assert.equal(competition.body.code, 'RUNTIME_BUSY');
   const result = await first;
   assert.equal(result.status, 200); assert.equal(result.body.project.status.phase, 'interrupted');
@@ -395,18 +400,39 @@ sqlTest('a bounded function request saves interrupted and refuses competing exec
 sqlTest('a final SQL save failure returns no candidate success and leaves only the last committed busy snapshot', async t => {
   const { stores, pools } = await fixture(t);
   await pools[0].query(`CREATE FUNCTION reject_final() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
-    IF NEW.state->'status'->>'phase' != 'busy' THEN RAISE EXCEPTION 'injected final failure'; END IF; RETURN NEW; END $$;
+    IF NEW.state->'status'->>'phase' NOT IN ('created', 'busy') THEN RAISE EXCEPTION 'injected final failure'; END IF; RETURN NEW; END $$;
     CREATE TRIGGER reject_final BEFORE UPDATE ON art_projects FOR EACH ROW EXECUTE FUNCTION reject_final()`);
   const app = createAppServer({ env, store: stores[0], functionMode: true, runtimeFactory: async project => ({
     async submit() { project.status.phase = 'ready'; project.concepts.push({ id: 'candidate-must-not-publish' }); },
     async dispose() {} }) });
   t.after(() => app.dispose());
   const call = await serve(t, app.handler);
-  const response = await call('POST', '/api/projects', { brief });
+  const response = await createAndStart(call, { brief });
   assert.equal(response.status, 503); assert.equal(response.body.project, undefined);
   const row = (await pools[0].query('SELECT state FROM art_projects')).rows[0].state;
   assert.equal(row.status.phase, 'busy'); assert.equal(row.concepts.length, 0);
   assert.deepEqual(app.projects.get(row.id), row);
+});
+
+sqlTest('real SQL deduplicates simultaneous cross-instance guest creation and rejects changed input without generation', async t => {
+  const { stores, pools } = await fixture(t);
+  const configured = { ...env, VERCEL_ENV: 'production' }, payload = creationInput({ brief, mode: 'live' });
+  let generations = 0;
+  const options = { env: configured, runtimeFactory: async () => { generations++; assert.fail('creation never starts the runtime'); } };
+  const first = await serve(t, createFunctionHandler({ ...options, store: stores[0] }));
+  const second = await serve(t, createFunctionHandler({ ...options, store: stores[1] }));
+  const headers = { host: 'art-lovat-two.vercel.app' };
+  const [a, b] = await Promise.all([first('POST', '/api/projects', payload, null, headers), second('POST', '/api/projects', payload, null, headers)]);
+  assert.equal(a.status, 201); assert.equal(b.status, 201);
+  assert.equal(a.body.project.id, b.body.project.id);
+  assert.deepEqual(a.headers['set-cookie'], b.headers['set-cookie']);
+  const saved = (await pools[0].query('SELECT state FROM art_projects')).rows;
+  assert.equal(saved.length, 1); assert.equal(saved[0].state.status.phase, 'created');
+  const changed = await second('POST', '/api/projects', { ...payload, brief: { ...brief, request: 'Changed request' } }, null, headers);
+  assert.equal(changed.status, 409);
+  assert.deepEqual((await pools[0].query('SELECT state FROM art_projects')).rows, saved);
+  assert.equal((await pools[0].query('SELECT * FROM art_http_attempts')).rowCount, 0);
+  assert.equal(generations, 0);
 });
 
 sqlTest('a real SQL result-save fault keeps an unknown charged attempt and blocks same-kind retries and model closing egress', async t => {
@@ -418,10 +444,10 @@ sqlTest('a real SQL result-save fault keeps an unknown charged attempt and block
   let sends = 0;
   const fake = budgetedFetch(async () => { sends++; return new Response('{}'); });
   const send = kind => withHttpBudget(active.project, kind, 'https://provider.invalid', () => fake('https://provider.invalid/query'));
-  await assert.rejects(() => send('qloo'), /结果记录无法保存/); assert.equal(sends, 1);
+  await assert.rejects(() => send('qloo'), /result could not be saved/); assert.equal(sends, 1);
   await pools[0].query('DROP TRIGGER reject_result ON art_http_attempts');
-  await assert.rejects(() => send('qloo'), /禁止自动重复/);
-  await assert.rejects(() => send('model'), /禁止自动重复/);
+  await assert.rejects(() => send('qloo'), /Automatic repeat sends are forbidden/);
+  await assert.rejects(() => send('model'), /Automatic repeat sends are forbidden/);
   assert.equal(sends, 1);
   const restored = await stores[1].get(active.project.id);
   assert.equal(restored.usage.qlooHttpAttempts, 1);

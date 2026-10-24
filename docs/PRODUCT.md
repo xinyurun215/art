@@ -2,7 +2,7 @@
 
 Product direction confirmed: 2026-10-17. Stage status updated: 2026-10-18.
 
-This document is the only source for product position and scope. The direction was confirmed by the user. The formal product name is not decided. The current name only describes the use, and it is not a reason to rename the repository. The capabilities below are **planned scope**. They are not a claim that everything is implemented or that the product has passed validation. Completed local runtime integration, the workspace, feedback and proposal contract fixes, and the boundary of each validation layer are in [stage validation](VALIDATION.md).
+This document is the only source for product position and scope. The direction was confirmed by the user. On 2026-10-24 the user confirmed TasteStage as the public product name. Repository, domain and project identifiers stay unchanged. Name exclusivity and trademark availability are not established. The capabilities below are **planned scope**. They are not a claim that everything is implemented or that the product has passed validation. Completed local runtime integration, the workspace, feedback and proposal contract fixes, and the boundary of each validation layer are in [stage validation](VALIDATION.md).
 
 This document was first written to set the product agreement. Later implementation, live API calls, commits, pushes, public release, adding a license, and deployment each require explicit authorization in that turn. A later slice is not that authorization. Saving a stage is not full product acceptance.
 
@@ -153,7 +153,7 @@ Those relationships are inferences from public descriptions. They do not prove t
 - Qloo's coverage and design value for brand pop-ups are not verified.
 - The official runtime has been wired locally, and tool execution and the proposal path have been checked. Deployment, restore across processes, and compatibility with the full V1 are not verified.
 - Direct competitor research is incomplete.
-- The formal name, the product's runtime model and provider, storage, and visual style are not decided.
+- Final choices for the product's runtime model and provider, storage, and visual style remain open.
 
 These unknowns do not by themselves change direction. When a problem shows up, report the effect and the smallest fix. A change of direction or scope waits for the user.
 

@@ -314,7 +314,7 @@ test('exact describe fields support two bounded drafts without recommendation en
     fixtures.push({ name: 'describe_only_draft', project: structuredClone(project), modelFeedback: project.runtime.feedback });
     const invalid = proposalCall(project, { phase: 'ready', concepts: structuredClone(project.concepts) }).arguments;
     invalid.concepts[0].evidenceLinks[0].observedValue = 'fabricated';
-    assert.throws(() => applyProposal(project, { ...invalid, projectId: project.id }), /实际返回不符/);
+    assert.throws(() => applyProposal(project, { ...invalid, projectId: project.id }), /does not match the actual returned field/);
   } finally { await runtime.dispose(); }
 });
 

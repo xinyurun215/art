@@ -10,7 +10,7 @@ import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { Errors } from 'typebox/value';
 import { applyProposal, proposeRevision, pendingRevisionDraft, finishRevisionRequest, REVISION_FIELDS, action, configStatus, LIMITS } from './state.mjs';
-import { withHttpBudget, withoutNetwork, validationRun, stopLiveRun, safeRuntimeFailure,
+import { withHttpBudget, withoutNetwork, liveRunStopped, stopLiveRun, safeRuntimeFailure,
   remainingBudget, toolFeedback, recordLocalFailure, modelOutputLimit } from './transport.mjs';
 import { evidenceView, readProjectEvidence, qlooResultView, compactToolMessages, unresolvedResearch, assembleContext, requestBudget, clarificationView } from './context.mjs';
 import { pendingReference, referenceQuestion, observeReferenceResolution, bindReferenceInputs, referenceResolutionView } from './references.mjs';
@@ -32,7 +32,7 @@ const projectEvidenceReference = reference => {
 const snapshotProject = project => {
   const clarification = clarificationView(project);
   if (clarification.independentLimitExceeded) throw recordLocalFailure(project, 'model', 'MODEL_CONTEXT_CLARIFICATION_LIMIT',
-    '项目已有超过12项独立澄清；不能安全省略仍有效条件，本地暂停并保留完整项目记录。');
+    'The project has more than 12 independent clarifications. Active conditions cannot be safely omitted; the run paused locally and the full project record was kept.');
   const pending = project.revisionRequest?.kind === 'pending_feedback'
     ? project.revisions?.find(revision => revision.id === project.revisionRequest.sourceRevisionId) : null;
   const priorFeedback = pending && project.revisionFeedback?.findLast(feedback =>
@@ -329,20 +329,20 @@ export function recordEvidence(project, operation, input, execution) {
     : result.interpretation?.entity ? [result.interpretation.entity] : [];
   const inputReferences = !synthetic && resolved.length ? resolved.map(entity => ({
     id: entity.entityId ?? entity.entity_id ?? entity.id ?? null,
-    name: entity.name ?? entity.input ?? '未知', type: entity.type ?? '未知', match: entity.match ?? '未知',
-    synthetic: false, resolution: structuredClone(entity), note: '来自实际官方工作流 interpretation；客户参考仍非已验证受众画像' }))
+    name: entity.name ?? entity.input ?? 'Unknown', type: entity.type ?? 'Unknown', match: entity.match ?? 'Unknown',
+    synthetic: false, resolution: structuredClone(entity), note: 'From the actual official workflow interpretation; client references are still not a verified audience profile' }))
     : (input.signals ?? [input.entity]).filter(Boolean).map((name, i) =>
     ({ id: synthetic ? `fixture:input-${i + 1}` : null, name, type: synthetic ? 'synthetic:input-signal' : 'unknown', synthetic,
-      note: synthetic ? '仅为客户输入的离线占位引用，非已解析 Qloo 实体' : '实际解析信息保留于 rawResult；未取得的标识符与类型明确未知' }));
+      note: synthetic ? 'Synthetic placeholder for a client-provided research signal; not a resolved Qloo entity' : 'Actual resolution is retained in rawResult. Missing identifiers and types are unknown' }));
   const card = { id: randomUUID(), projectId: project.id, inputReferences,
     returnedEntities: structuredClone(entities), source: synthetic ? fixture.source : 'Qloo official workflow',
-    query: { workflow: operation, input: structuredClone(input), designQuestion: '哪些文化信号能够影响参与组织与产品接触方式？' },
-    context: { venue: project.brief.venue || '未知', geographicFilter: input.filter_location ?? '未应用；场地文字不等于适用地理筛选',
-      referenceStatus: synthetic ? '合成样本，未解析真实实体' : '查看实际工作流解析信息；未自动确认代理品牌' },
+    query: { workflow: operation, input: structuredClone(input), designQuestion: 'Which cultural signals could change how people participate and meet the product?' },
+    context: { venue: project.brief.venue || 'Unknown', geographicFilter: input.filter_location ?? 'Not applied; venue text is not an applied geographic filter',
+      referenceStatus: synthetic ? 'Synthetic sample; real entities have not been resolved' : 'Check the actual workflow resolution; no proxy brand was automatically confirmed' },
     queriedAt: new Date().toISOString(), requestRef: execution.correlationId, synthetic,
     relevant: synthetic ? project.scenario !== 'irrelevant' : null,
-    boundary: synthetic ? '合成数据；虚构实体，非 Qloo 数据、非真实受众画像或活动效果证据。'
-      : '文化关联不证明个体行为、因果效果、配色、材料、预算、版权或合作方可用性。',
+    boundary: synthetic ? 'Synthetic data with fictional entities; not Qloo data, a real audience profile, or evidence of event effects.'
+      : 'Cultural associations do not prove individual behavior, causal effects, colors, materials, budget, rights clearance, or partner availability.',
     rawResult: structuredClone(result) };
   project.evidence.push(card);
   return card;
@@ -360,21 +360,21 @@ function stoppedExecution(project, executor, operation, context) {
       error: { code: 'ART_QUERY_STOPPED', layer: 'harness', retryable: false, recovery: 'Keep the current project and state the failure. Do not retry or send a substitute query.' }, results: [] } };
 }
 
-// The same process latch covers every exposed official query tool. A failed
-// execute call can return its error to the model, but cannot open another query.
+// Database stops stay with the project; file validation stops cover the round.
+// A failed execute can return its error to the model, but cannot open another query.
 export function wrapProjectExecutor(project, officialExecutor, env = process.env) {
   return { ...officialExecutor, async execute(operation, input, context) {
     const blocked = reason => ({ operation, transport: officialExecutor.transport, correlationId: context?.correlationId ?? randomUUID(), durationMs: 0,
       result: { schema_version: '1.0-preview.1', operation, status: 'needs_input', results: [],
         summary: reason, feedback: toolFeedback(project, 'REFERENCE_CONFIRMATION_REQUIRED', '/signals', reason, true) } });
     if (operation === 'recommend' && pendingReference(project))
-      return blocked('输入文化参考尚未解决；推荐已在执行边界暂停，请先选择实际候选或补充信息。');
+      return blocked('The input cultural reference is unresolved. Recommendations are paused; choose an actual candidate or add detail first.');
     try { input = bindReferenceInputs(project, operation, input); }
     catch (error) { const execution = blocked(error.message); execution.result.feedback.code = error.code; return execution; }
-    if (project.mode === 'live' && (project.runtime.queryStopped || validationRun.queryStopped))
+    if (project.mode === 'live' && (liveRunStopped(project) || remainingBudget(project).queryStopped))
       return stoppedExecution(project, officialExecutor, operation, context);
     if (project.mode === 'live' && remainingBudget(project).qlooHttpAttempts === 0) {
-      recordLocalFailure(project, 'qloo', 'QLOO_HTTP_BUDGET_EXHAUSTED', 'Qloo HTTP 总额度已用尽；本地已阻止查询，未发生新的远端请求。');
+      recordLocalFailure(project, 'qloo', 'QLOO_HTTP_BUDGET_EXHAUSTED', 'The Qloo HTTP budget is exhausted. The query was blocked locally; no new remote request was sent.');
       project.runtime.queryStopped = true;
       project.runtime.failure = safeRuntimeFailure(project, 'qloo');
       stopLiveRun(project, project.runtime.failure, true);
@@ -384,24 +384,24 @@ export function wrapProjectExecutor(project, officialExecutor, env = process.env
     try {
       execution = project.mode === 'offline' ? await withoutNetwork(project, () => officialExecutor.execute(operation, input, context))
         : await withHttpBudget(project, 'qloo', env.QLOO_API_URL, () => officialExecutor.execute(operation, input, context));
-      if (!execution?.result || typeof execution.result.status !== 'string') throw new Error('官方查询返回格式无效');
+      if (!execution?.result || typeof execution.result.status !== 'string') throw new Error('The official query returned an invalid format');
       const resolvedInput = observeReferenceResolution(project, operation, input, execution.result);
       if (resolvedInput && !pendingReference(project)) {
         input = resolvedInput;
         execution = project.mode === 'offline' ? await withoutNetwork(project, () => officialExecutor.execute(operation, input, context))
           : await withHttpBudget(project, 'qloo', env.QLOO_API_URL, () => officialExecutor.execute(operation, input, context));
-        if (!execution?.result || typeof execution.result.status !== 'string') throw new Error('官方查询返回格式无效');
+        if (!execution?.result || typeof execution.result.status !== 'string') throw new Error('The official query returned an invalid format');
       }
       if (project.referenceResolutions?.length) execution = { ...execution,
         result: { ...execution.result, referenceResolution: referenceResolutionView(project) } };
     } catch (error) {
-      action(project, 'query', '文化研究查询未完成', project.mode === 'offline' ? '演示数据读取出错' : '官方查询失败；本轮所有真实查询已停止', 'error');
+      action(project, 'query', 'Cultural research did not finish', project.mode === 'offline' ? 'Synthetic demo data could not be read' : 'The official query failed. Further live queries in this run are stopped', 'error');
       if (project.mode === 'live') {
         project.runtime.failure = safeRuntimeFailure(project, 'qloo');
         stopLiveRun(project, project.runtime.failure, true);
         const stopped = stoppedExecution(project, officialExecutor, operation, context);
         if (project.runtime.localFailure?.kind !== 'qloo') stopped.result.feedback = toolFeedback(project,
-          'QLOO_REMOTE_ERROR', '/', '官方工作流执行失败；没有取得新的支持证据。');
+          'QLOO_REMOTE_ERROR', '/', 'The official workflow failed. No new supporting evidence was obtained.');
         return stopped;
       }
       throw error;
@@ -417,7 +417,7 @@ export function wrapProjectExecutor(project, officialExecutor, env = process.env
       project.runtime.failure = safeRuntimeFailure(project, 'qloo');
       stopLiveRun(project, project.runtime.failure, true);
       execution = { ...execution, result: { ...execution.result, queryStopped: true,
-        stopReason: '官方查询已返回错误；本轮所有项目不再执行后续查询或替代请求。' } };
+        stopReason: 'The official query returned an error. Further queries and substitute requests are blocked for this run.' } };
     }
     const card = recordEvidence(project, operation, input, execution);
     if (card) {
@@ -434,8 +434,8 @@ export function wrapProjectExecutor(project, officialExecutor, env = process.env
             : 'The returned fields can be cited exactly. A description can support a clearly bounded design inference. It does not prove audience or effect.',
       status === 'needs_input', empty ? 'Do not repeat the same empty query. Adjust an explicit parameter, draft from evidence already saved, or pause with insufficient_evidence. Write the draft in English.' : undefined);
     execution = { ...execution, result: { ...execution.result, feedback } };
-    action(project, 'query', project.mode === 'offline' ? '读取演示用合成数据' : '执行官方文化研究查询',
-      execution.result.status === 'error' ? (project.mode === 'live' ? '查询失败；没有支持设计的证据；真实模式已停止后续查询' : '离线模拟查询失败；没有支持设计的证据') : card?.relevant === false ? '返回内容无关；不能用作设计依据' : '返回字段已保留，等待模型区分事实与设计转译',
+    action(project, 'query', project.mode === 'offline' ? 'Read synthetic demo data' : 'Run the official cultural research query',
+      execution.result.status === 'error' ? (project.mode === 'live' ? 'The query failed and supplied no supporting design evidence. Further live queries are stopped' : 'The offline simulated query failed and supplied no supporting design evidence') : card?.relevant === false ? 'The result is irrelevant and cannot support the design' : 'Returned fields were kept so the model can separate facts from design inference',
       execution.result.status === 'error' ? 'error' : 'done');
     return execution;
   } };
@@ -443,7 +443,7 @@ export function wrapProjectExecutor(project, officialExecutor, env = process.env
 
 export async function createProductRuntime(project, { env = process.env, decide = offlineDecision, diagnostic, qlooExecutor,
   memorySession = false, runtimeRoot } = {}) {
-  if (diagnostic && typeof diagnostic.fetch !== 'function') throw new Error('诊断必须提供独立的一次请求边界');
+  if (diagnostic && typeof diagnostic.fetch !== 'function') throw new Error('The diagnostic requires a separate single-request boundary');
   const diagnosticState = diagnostic ? { modelCallbacks: 0, blockedModelCallbacks: 0, pausedToolNames: [], toolExecutionAttempts: 0 } : undefined;
   const root = resolve(new URL('..', import.meta.url).pathname.replace(/^\/(\w:)/, '$1'));
   const paths = resolveQlooPaths({ cwd: root, env: { QLOO_HOME: runtimeRoot ?? resolve(root, '.art-runtime', project.id) } });
@@ -451,7 +451,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
   let liveStream;
   if (project.mode === 'live') {
     const config = configStatus(env);
-    if (!config.modes.live.available) throw new Error(`真实模式未启用或配置不完整：${config.modes.live.missing.join(', ')}`);
+    if (!config.modes.live.available) throw new Error(`Live mode is disabled or its configuration is incomplete: ${config.modes.live.missing.join(', ')}`);
     // Literal import() specifiers so Vercel file tracing can pack the provider
     // modules. A runtime template string is invisible to the bundler.
     const liveStreams = {
@@ -460,7 +460,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
       'anthropic-messages': () => import('@earendil-works/pi-ai/api/anthropic-messages'),
     };
     liveStream = (await liveStreams[env.ART_MODEL_API]?.())?.streamSimple;
-    if (typeof liveStream !== 'function') throw new Error('当前仅支持明确配置的 OpenAI 兼容补全／响应或 Anthropic 消息协议');
+    if (typeof liveStream !== 'function') throw new Error('Only explicitly configured OpenAI-compatible completions/responses or Anthropic messages are supported');
   }
   const provider = project.mode === 'offline' ? `offline-${project.id}` : env.ART_MODEL_PROVIDER;
   const modelId = project.mode === 'offline' ? 'synthetic-design-fixture' : env.ART_MODEL_ID;
@@ -474,18 +474,18 @@ export async function createProductRuntime(project, { env = process.env, decide 
       if (diagnosticState) {
         if (diagnosticState.modelCallbacks >= 1) {
           diagnosticState.blockedModelCallbacks++;
-          throw new Error('诊断禁止第二次模型调用');
+          throw new Error('The diagnostic forbids a second model call');
         }
         diagnosticState.modelCallbacks++;
       }
       if (!diagnostic && project.mode === 'live' && remainingBudget(project).modelHttpAttempts === 0)
-        throw recordLocalFailure(project, 'model', 'MODEL_HTTP_BUDGET_EXHAUSTED', '模型 HTTP 总额度已用尽；本地已阻止请求。');
+        throw recordLocalFailure(project, 'model', 'MODEL_HTTP_BUDGET_EXHAUSTED', 'The model HTTP budget is exhausted. The request was blocked locally.');
       project.usage.modelCalls++;
       // Preserve the default's twelve local-only callbacks without resetting cumulative usage.
       const callbackLimit = Math.min(Number.MAX_SAFE_INTEGER, (project.mode === 'live'
         ? remainingBudget(project).caseLimits.modelHttpAttempts : LIMITS.modelHttpAttempts) + 2 * LIMITS.modelHttpAttempts);
       if (project.usage.modelCalls > callbackLimit)
-        throw recordLocalFailure(project, 'model', 'MODEL_CALLBACK_BUDGET_EXHAUSTED', '本项目模型轮次上限已到，暂停并保留当前状态');
+        throw recordLocalFailure(project, 'model', 'MODEL_CALLBACK_BUDGET_EXHAUSTED', 'The project model-turn limit is reached. The run paused and the current state was kept');
       if (project.mode === 'offline') {
         const read = context.messages.filter(m => m.role === 'toolResult');
         read.forEach(m => { toolText(m); });
@@ -514,13 +514,13 @@ export async function createProductRuntime(project, { env = process.env, decide 
             capacity.finalMaxTokens = modelOutputLimit(finalPayload);
             if (!capacity.fits || capacity.finalMaxTokens !== model.maxTokens)
               throw recordLocalFailure(project, 'model', 'MODEL_CONTEXT_CAPACITY_INSUFFICIENT',
-                !capacity.fits ? contextCapacityReason(capacity) : '模型请求的最终输出容量与配置不符；请求已在本地停止。');
+                !capacity.fits ? contextCapacityReason(capacity) : 'The final model output capacity does not match its configuration. The request was stopped locally.');
             return finalPayload;
           } });
       return diagnostic ? stream() : withHttpBudget(project, 'model', env.ART_MODEL_BASE_URL, stream,
         [env.ART_MODEL_API_KEY, env.QLOO_API_KEY]);
     },
-    models: [{ id: modelId, name: project.mode === 'offline' ? '离线合成设计模型' : modelId,
+    models: [{ id: modelId, name: project.mode === 'offline' ? 'Offline synthetic design model' : modelId,
       reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: officialFlash ? 65536 : 32000, maxTokens: 12000 }] });
   let officialExecutor;
   if (qlooExecutor) officialExecutor = qlooExecutor;
@@ -528,7 +528,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
     officialExecutor = createDelegatingQlooWorkflowExecutor({ transport: { kind: 'direct', name: 'local-synthetic-fixture', remote: false },
       async invoke(operation) {
         if (project.scenario === 'failure') return { schema_version: '1.0-preview.1', operation, status: 'error',
-          summary: '离线模拟查询失败；未发生真实请求', results: [], error: { code: 'OFFLINE_FIXTURE_FAILURE', retryable: false } };
+          summary: 'The offline simulated query failed; no live request was sent', results: [], error: { code: 'OFFLINE_FIXTURE_FAILURE', retryable: false } };
         return { schema_version: '1.0-preview.1', operation, status: 'ok', synthetic: true,
           summary: fixture.label, results: structuredClone(fixture[project.scenario]) };
       } });
@@ -536,7 +536,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
     officialExecutor = createDirectQlooWorkflowExecutorFromEnvironment({
       env: { QLOO_API_KEY: env.QLOO_API_KEY, QLOO_BASE_URL: env.QLOO_API_URL, QLOO_TRUSTED_BASE_URL: env.QLOO_API_URL },
       configPath: paths.configFile, readConfigFile: () => '', executionObserver: {} });
-    if (!officialExecutor) throw new Error('Qloo 官方执行器缺少凭据');
+    if (!officialExecutor) throw new Error('The official Qloo executor has no credentials');
   }
   const executor = wrapProjectExecutor(project, officialExecutor, env);
   const tools = createQlooTools({ executor }).filter(t => TOOL_NAMES.includes(t.name));
@@ -560,7 +560,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
         if (issue) throw Object.assign(new Error('The partial revision arguments are structurally invalid. Do not submit the project, target, base version, or before values.'),
           { feedback: { code: 'REVISION_SCHEMA_INVALID', path: issue.path, reason: 'The partial revision arguments are structurally invalid. Correct them using the allowed fields, in English.', correctable: true } });
         result = proposeRevision(project, { ...input, requestId: submittedRevisionId });
-        action(project, 'revision', result.status === 'pending' ? '形成局部待审修改' : '局部修改待确认', input.summary);
+        action(project, 'revision', result.status === 'pending' ? 'Created a pending partial revision' : 'Partial revision needs confirmation', input.summary);
         result = { accepted: false, completed: true, revisionId: result.id ?? null, status: result.status,
           feedback: toolFeedback(project, 'REVISION_RESPONSE_SAVED', '/', 'The partial revision response was saved. The confirmed version is unchanged until the user approves it.', false) };
       } catch (error) {
@@ -588,7 +588,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
           rejected.correctable, 'Correct the proposal fields at the feedback path and retry. Do not invent a project, evidence, or citation. Write the proposal in English.', businessDiagnostic(project, input, rejected.path)) };
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
       }
-      action(project, 'proposal', input.phase === 'needs_input' ? '提出关键澄清' : '形成可讨论概念', input.summary);
+      action(project, 'proposal', input.phase === 'needs_input' ? 'Asked a key clarification' : 'Created concepts for discussion', input.summary);
       result.feedback = toolFeedback(project, 'PROPOSAL_ACCEPTED', '/', 'The proposal passed structure, version, citation, and literal-constraint checks. That is not a judgment of design quality or product acceptance.', false, 'The proposal is saved. Wait for the user to review it.');
       return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
     } });
@@ -603,7 +603,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
     const savedText = readFileSync(saved, 'utf8');
     const entries = parseSessionEntries(savedText);
     if (entries.length !== savedText.split(/\r?\n/).filter(line => line.trim()).length)
-      throw new Error('当前项目的已存会话包含不可读取记录；停止并保留原文件。');
+      throw new Error('The saved project session contains unreadable records. Stopped and kept the original files.');
     researchCarry = unresolvedResearch(buildSessionContext(entries.filter(entry => entry.type !== 'session')).messages, researchCarry);
   }
   const sessionManager = memorySession ? SessionManager.inMemory(root) : project.mode === 'offline' && priorSession
@@ -618,7 +618,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
       exploreInstructions: 'Every user input is brief text. Do not switch profile. Do not call files, a shell, or any unauthorized tool. Change concepts and questions only through the constrained proposal tools. All text you write for the user must be English. For the first study, name one concrete question that would change the participation structure or how people meet the product, and keep a short record in propose_design_response.summary: the research question, whether a description is enough, the query choice, the actual result, and the specific design effect. describe is enough only to check an entity identity or an existing attribute. It does not complete association research. If the question needs entities beyond the given references, describe is not enough: when the budget allows, use qloo_recommend and combine the confirmed signals for that one question, starting from the smallest set that can answer it. If a result lacks a description that can support a content claim, describe only as needed. An association does not replace the work itself. Association strength is not a design score, an audience profile, or an effect. If the result cannot support the design choice, say the evidence is insufficient, ask, or pause. Do not treat the number of calls as proof that research is finished. Each tool response includes the remaining HTTP budget and a next step. The balance shown to you was taken before the current read is counted and includes this model request, so it is not the number of requests still available afterward. If Qloo has stopped or the remaining count is 0, do not query again. You may submit a draft that marks facts, inferences, and unknowns from exact fields already described, or pause. Do not force recommend or affinity. Describing a name usually costs 2 HTTP requests. Recommending from N signals may cost N resolution requests plus 1 insights request. Cache hits and retries change the cost. Use the actual remaining budget.' },
     customTools: diagnostic ? tools.map(tool => ({ ...tool, async execute() {
       diagnosticState.toolExecutionAttempts++;
-      throw new Error('诊断暂停：禁止执行研究或提案工具');
+      throw new Error('Diagnostic paused: research and proposal tools are forbidden');
     } })) : tools });
   const session = runtime.sessionRuntime.session;
   let submittedMessage;
@@ -631,7 +631,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
     // also covers unknown tools or invalid arguments rejected before preflight.
     session.agent.beforeToolCall = async ({ toolCall }) => {
       diagnosticState.pausedToolNames.push(TOOL_NAMES.includes(toolCall.name) ? toolCall.name : 'unknown');
-      return { block: true, reason: 'DeepSeek 诊断在工具执行前暂停', terminate: true };
+      return { block: true, reason: 'The DeepSeek diagnostic paused before tool execution', terminate: true };
     };
     session.agent.shouldStopAfterTurn = async () => true;
   } else {
@@ -647,7 +647,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
       const schema = context.toolCall.name === 'propose_design_response' ? proposalSchema
         : context.toolCall.name === 'propose_concept_revision' ? revisionSchema : null;
       if (schema && schemaIssue(schema, context.toolCall.arguments))
-        return { block: true, reason: '提案参数结构无效；按工具反馈修正。' };
+        return { block: true, reason: 'The proposal arguments have an invalid structure. Correct them using the tool feedback.' };
       return originalBeforeToolCall?.(context);
     };
     session.agent.afterToolCall = async (context, signal) => {
@@ -706,7 +706,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
       if (await originalShouldStop?.(context, signal)) return true;
       if (pendingReference(project)) { referenceQuestion(project); return true; }
       if (context.toolResults.some(result => result.details?.accepted === true || result.details?.completed === true)) return true;
-      if (project.mode === 'live' && (validationRun.liveStopped
+      if (project.mode === 'live' && (liveRunStopped(project)
         || (project.runtime.failure && project.runtime.failure.kind !== 'qloo')
         || (project.runtime.localFailure && project.runtime.localFailure.kind !== 'qloo')
         || ['error', 'aborted'].includes(context.message.stopReason))) return true;
@@ -751,7 +751,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
     if (event.type === 'message_end' && event.message.role === 'assistant' && event.message.stopReason === 'length'
       && !event.message.content.some(block => block.type === 'toolCall' || (block.type === 'text' && block.text.trim()))) {
       project.runtime.failure = { kind: 'model', code: 'MODEL_OUTPUT_LENGTH_EMPTY', status: null, stopReason: 'length',
-        summary: '模型因输出长度限制结束，但没有可用正文或工具调用；正式内容与待审稿保持不变。' };
+        summary: 'The model reached its output limit without usable text or a tool call. Confirmed content and pending drafts are unchanged.' };
       stopLiveRun(project, project.runtime.failure);
     }
     if (event.type === 'message_end' && event.message.role === 'assistant' && ['error', 'aborted'].includes(event.message.stopReason)) {
@@ -760,7 +760,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
     }
     if (event.type === 'tool_execution_start') {
       project.usage.toolCalls++;
-      const record = action(project, 'tool', event.toolName, '官方运行时请求执行工具', 'running');
+      const record = action(project, 'tool', event.toolName, 'The official runtime requested a tool', 'running');
       record.toolCallId = event.toolCallId;
       if (['qloo_describe', 'qloo_recommend'].includes(event.toolName)) record.arguments = redactArguments(event.args);
     }
@@ -770,7 +770,7 @@ export async function createProductRuntime(project, { env = process.env, decide 
         const result = event.result?.details;
         const failed = event.isError || result?.status === 'error';
         pending.status = failed ? 'error' : 'done';
-        pending.detail = failed ? '工具拒绝或执行失败；未视作成功证据' : '结构化结果已通过 content.text 返回模型';
+        pending.detail = failed ? 'The tool was rejected or failed; it was not treated as successful evidence' : 'The structured result was returned to the model through content.text';
         if (result?.feedback || (failed && project.runtime.feedback)) {
           pending.feedback = result?.feedback ?? project.runtime.feedback;
           project.runtime.feedback = pending.feedback;
@@ -824,12 +824,12 @@ export async function createProductRuntime(project, { env = process.env, decide 
     if (last) project.messages.push({ role: 'assistant', text: last });
     if (revisionRequest && revisionRequest.status === 'running') {
       finishRevisionRequest(project, revisionRequest, 'error', project.runtime.failure?.summary ?? project.runtime.feedback?.reason
-        ?? '本轮未产生有效局部修改；正式版与原待审稿保持不变。');
+        ?? 'This run produced no valid partial revision. Confirmed content and the original pending draft are unchanged.');
       project.status = { phase: 'error', detail: revisionRequest.detail };
     } else if (project.version === previousVersion && project.status.phase === 'busy') {
       const feedback = project.runtime.feedback;
       project.status = { phase: !project.runtime.failure && ['QLOO_EMPTY', 'EVIDENCE_INSUFFICIENT'].includes(feedback?.code) ? 'insufficient_evidence' : 'error',
-        detail: project.runtime.failure?.summary ?? feedback?.reason ?? '本轮未产生通过校验的提案；当前状态已保留' };
+        detail: project.runtime.failure?.summary ?? feedback?.reason ?? 'This run produced no validated proposal. The current state was kept' };
     }
     return project;
   }, abort: () => session.abort(), dispose: () => runtime.dispose() };

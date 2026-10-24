@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createAndStart } from './project-http.mjs';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -45,7 +46,7 @@ test('same ID duplicates and actual year/type/creator uniquely resolve without c
     assert.equal(record.status, 'system_resolved'); assert.equal(record.confirmed, false);
     assert.equal(calls[1].input.entity, record.selectedId);
     assert.equal(record.returnedCandidates.length, new Set(values.map(candidate => candidate.id)).size);
-    assert(record.basis.source.includes('系统解析'));
+    assert(record.basis.source.includes('system resolution'));
     assert.equal(value.usage.qlooHttpAttempts, 0);
   }
 });
@@ -285,7 +286,7 @@ test('GET refresh and service restart restore waiting state; vague text rejects 
   };
   let port = await start();
   try {
-    const created = await local(port, 'POST', '/api/projects', { brief });
+    const created = await createAndStart((...args) => local(port, ...args), { brief });
     const id = created.body.project.id; cleanRuntime(t, created.body.project);
     const waiting = await settled(port, id), saved = structuredClone(pendingReference(waiting));
     assert.equal(waiting.concepts.length, 0);

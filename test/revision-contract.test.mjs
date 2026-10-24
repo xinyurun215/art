@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createAndStart } from './project-http.mjs';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -13,7 +14,8 @@ import { createAppServer } from '../app/server.mjs';
 const brief = { request: '合成修订测试：随行杯试握和开合，非真实项目或研究', venue: '测试室内',
   mustKeep: ['试握', '开合'], avoid: ['强制购买'] };
 const concepts = ['a', 'b'].map(id => ({ id, title: `合成方案${id}`, coreClaim: '双人试握和开合',
-  mechanism: { organization: id === 'a' ? '双人互测' : '个人观察', description: '试握和开合后记录个人感受' },
+  mechanism: { organization: id === 'a' ? '双人互测' : '个人观察', description: id === 'a'
+    ? '两人轮流试握和开合，由搭档记录反馈' : '个人独立试握和开合后记录感受' },
   journey: [{ stage: '到场', action: '领取记录卡' }, { stage: '参与', action: '试握和开合' }, { stage: '离开', action: '带走记录卡' }],
   productTouchpoints: ['试握', '开合', '保留材质样本'], evidenceLinks: [],
   openQuestions: ['现场容量未知'], unverifiedEffects: ['参与效果未经验证'] }));
@@ -69,7 +71,7 @@ test('revision model receives complete impact contract and actionable missing-im
     assert.equal(feedback.expectedType, 'array'); assert.equal(feedback.actualType, 'missing');
     assert.equal(feedback.correctable, true);
     assert.doesNotMatch(feedback.nextAction, /insufficient_evidence/);
-    assert.match(feedback.nextAction, /needs_input\/conflict/);
+    assert.match(feedback.nextAction, /needs_input or conflict/);
     assert.equal(project.runtime.failure, undefined);
     assert.equal(calls, 2); assert.deepEqual(project.concepts, official); assert.equal(project.revisions.length, 0);
     assert.equal(externalAttempts, 0);
@@ -98,8 +100,8 @@ test('every unchanged revision field is rejected against the official concept or
         assert.equal(results.length, REVISION_FIELDS.length);
         for (const { feedback } of results) {
           assert.equal(feedback.code, 'REVISION_INVALID'); assert.equal(feedback.path, '/changes/0/after');
-          assert.match(feedback.reason, pass ? /当前待审稿/ : /正式内容/);
-          assert.match(feedback.nextAction, /删除未变化的 changes 条目/);
+          assert.match(feedback.reason, pass ? /current pending draft/ : /confirmed content/);
+          assert.match(feedback.nextAction, /Remove unchanged change entries/);
           assert.doesNotMatch(feedback.nextAction, /insufficient_evidence/); check++;
         }
         return [{ type: 'toolCall', id: `${pass}-valid`, name: 'propose_concept_revision',
@@ -162,7 +164,7 @@ test('HTTP fake model corrects missing impact and unchanged sixth field, then re
         checked.push('missing-impact');
       } else {
         assert.equal(feedback.code, 'REVISION_INVALID'); assert.equal(feedback.path, '/changes/5/after');
-        assert.match(feedback.nextAction, /删除未变化的 changes 条目/);
+        assert.match(feedback.nextAction, /Remove unchanged change entries/);
         checked.push('unchanged-sixth-field');
       }
     }
@@ -171,7 +173,7 @@ test('HTTP fake model corrects missing impact and unchanged sixth field, then re
   let app = createAppServer({ env: {}, dataDir, runtimeOptions });
   try {
     let port = await listen(app);
-    const created = await local(port, 'POST', '/api/projects', { mode: 'offline', brief });
+    const created = await createAndStart((...args) => local(port, ...args), { mode: 'offline', brief });
     assert.equal(created.status, 202);
     const route = `/api/projects/${created.project.id}`;
     let project = await settled(port, route);

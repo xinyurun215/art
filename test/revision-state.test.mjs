@@ -43,7 +43,7 @@ test('localized revision stores authoritative before and keeps confirmed concept
   assert.deepEqual(project.concepts[1], before[1]);
   assert.deepEqual(project.evidence, evidence);
   assert.equal(project.versionHistory.at(-1).version, 2);
-  assert.throws(() => decideRevision(project, pending.id, 'accept', { baseVersion: 2 }), /已处理/);
+  assert.throws(() => decideRevision(project, pending.id, 'accept', { baseVersion: 2 }), /already been decided/);
 });
 
 test('reject leaves confirmed version and both concepts unchanged', () => {
@@ -74,20 +74,20 @@ test('server rejects target, stale binding, unauthorized fields and nonexistent 
     assert.deepEqual(project, before);
   }
   const project = revisionProject();
-  assert.throws(() => beginRevision(project, { conceptId: 'b', baseVersion: 1, text: '不应跨目标' }), /选中/);
-  assert.throws(() => beginRevision(project, { conceptId: 'a', baseVersion: 0, text: '过期' }), /过期/);
+  assert.throws(() => beginRevision(project, { conceptId: 'b', baseVersion: 1, text: '不应跨目标' }), /selected concept/);
+  assert.throws(() => beginRevision(project, { conceptId: 'a', baseVersion: 0, text: '过期' }), /stale/);
 });
 
 test('pending and running requests reject old-client replacement and selection changes atomically', () => {
   const project = revisionProject();
   const request = beginRevision(project, { conceptId: 'a', baseVersion: 1, text: '第一种局部改法' });
   const running = structuredClone(project);
-  assert.throws(() => beginRevision(project, { conceptId: 'a', baseVersion: 1, text: '运行中替换' }), /仍在处理/);
+  assert.throws(() => beginRevision(project, { conceptId: 'a', baseVersion: 1, text: '运行中替换' }), /still running/);
   assert.deepEqual(project, running);
   const first = proposeRevision(project, revisionInput(request));
   const pending = structuredClone(project);
-  assert.throws(() => beginRevision(project, { conceptId: 'a', baseVersion: 1, text: '另一个旧页面提交' }), /待审/);
-  assert.throws(() => selectConcept(project, { conceptId: 'b', baseVersion: 1 }), /待审/);
+  assert.throws(() => beginRevision(project, { conceptId: 'a', baseVersion: 1, text: '另一个旧页面提交' }), /pending/);
+  assert.throws(() => selectConcept(project, { conceptId: 'b', baseVersion: 1 }), /pending/);
   assert.deepEqual(project, pending);
   assert.equal(project.revisions.length, 1); assert.equal(project.revisions[0].id, first.id);
 });
@@ -99,11 +99,11 @@ test('legacy stale pending can be explicitly rejected despite changed selection 
   project.version = 2; project.selectedConceptId = 'missing-old-selection';
   revision.changes = [{ field: '__proto__', before: '旧损坏内容', after: '不应执行' }];
   const before = structuredClone(project);
-  assert.throws(() => decideRevision(project, revision.id, 'accept', { baseVersion: 1 }), /过期/);
+  assert.throws(() => decideRevision(project, revision.id, 'accept', { baseVersion: 1 }), /stale/);
   assert.deepEqual(project, before);
   decideRevision(project, revision.id, 'reject', { baseVersion: 1 });
   assert.equal(revision.status, 'rejected'); assert.equal(typeof revision.decidedAt, 'string');
-  assert.equal(project.status.phase, 'ready'); assert.match(project.status.detail, /已拒绝/);
+  assert.equal(project.status.phase, 'ready'); assert.match(project.status.detail, /was rejected/);
   delete revision.decidedAt; revision.status = 'pending';
   assert.deepEqual({ ...project, status: before.status }, before, 'reject changes only decision/status metadata, never selection, concepts, version or history');
 });

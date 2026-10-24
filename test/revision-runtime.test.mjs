@@ -7,12 +7,13 @@ import { dirname, join, resolve } from 'node:path';
 import { createProject, selectConcept, beginRevision, applyProposal } from '../app/state.mjs';
 import { createProductRuntime, offlineDecision, REVISION_TOOL_NAMES } from '../app/runtime.mjs';
 import { createAppServer } from '../app/server.mjs';
+import { createAndStart } from './project-http.mjs';
 
 function fixtureProject() {
   const project = createProject({ brief: { request: '离线快闪项目', venue: '室内', mustKeep: ['试穿'] } });
   project.status = { phase: 'ready', detail: '初始正式内容' };
   project.concepts = ['a', 'b'].map(id => ({ id, title: id, coreClaim: '共同试穿体验',
-    mechanism: { organization: id, description: '集体试穿' }, journey: [{ stage: '到场', action: '领取任务' },
+    mechanism: { organization: id, description: id === 'a' ? '集体按固定轮次试穿' : '个人自选任务独立试穿' }, journey: [{ stage: '到场', action: '领取任务' },
       { stage: '参与', action: '完成试穿' }, { stage: '离开', action: '带走记录' }], productTouchpoints: ['试穿'],
     evidenceLinks: [{ evidenceId: 'historical-missing', observation: '错误历史引用保留原样' }], openQuestions: [], unverifiedEffects: ['效果未知'] }));
   project.evidence = [{ id: 'existing-description', projectId: project.id, query: { workflow: 'describe' },
@@ -139,7 +140,7 @@ test('legacy full-project proposal executor cannot bypass review after concepts 
     const noChange = { ...legacy, concepts: structuredClone(project.concepts), projectId: project.id };
     assert.equal(applyProposal(project, noChange).unchanged, true); assert.equal(project.version, 1);
     beginRevision(project, { conceptId: 'a', baseVersion: 1, text: '已进入局部修改' });
-    assert.throws(() => applyProposal(project, noChange), /完整提案工具/);
+    assert.throws(() => applyProposal(project, noChange), /full proposal tool/);
   } finally { await runtime.dispose(); }
 });
 
@@ -189,7 +190,7 @@ test('HTTP selected target, concurrent accepts, reject and restart restore confi
     const confirmed = structuredClone(restored);
     const discarded = await local(port, 'POST', `${route}/revisions/legacy-stale/reject`, { baseVersion: 1 });
     assert.equal(discarded.status, 200); assert.equal(discarded.project.revisions.at(-1).status, 'rejected');
-    assert.equal(discarded.project.status.phase, 'ready'); assert.match(discarded.project.status.detail, /已拒绝/);
+    assert.equal(discarded.project.status.phase, 'ready'); assert.match(discarded.project.status.detail, /was rejected/);
     const discardingOnly = discarded.project;
     delete discardingOnly.revisions.at(-1).decidedAt; discardingOnly.revisions.at(-1).status = 'pending';
     assert.deepEqual({ ...discardingOnly, status: confirmed.status }, confirmed);
@@ -243,7 +244,7 @@ test('HTTP content rejection can be corrected by the model or a user message, th
     let app = createAppServer({ env: {}, dataDir, runtimeOptions });
     let port = await listen(app);
     try {
-      const created = await local(port, 'POST', '/api/projects', { mode: 'offline', brief: {
+      const created = await createAndStart((...args) => local(port, ...args), { mode: 'offline', brief: {
         request: '合成本地流程：提供两个试穿方案，禁止强制购买', venue: '合成室内场地',
         references: ['合成音乐参考'], mustKeep: ['试穿'], avoid: ['强制购买'],
       } });

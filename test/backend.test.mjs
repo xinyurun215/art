@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { request } from 'node:http';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +12,7 @@ import { createProject, applyProposal, validateProposal, configStatus } from '..
 import { createProductRuntime, recordEvidence, wrapProjectExecutor, TOOL_NAMES } from '../app/runtime.mjs';
 import { budgetedFetch, serverUsage, validationRun, withHttpBudget, withoutNetwork } from '../app/transport.mjs';
 import { createAppServer } from '../app/server.mjs';
+import { createAndStart, creationInput } from './project-http.mjs';
 
 function isolatedServer(options) {
   const dataDir = mkdtempSync(join(tmpdir(), 'art-backend-test-'));
@@ -60,12 +63,12 @@ test('server contract rejects stale, cross-project, unknown or fabricated field 
     const proposal = { projectId: project.id, baseVersion: project.version, phase: 'ready', summary: '验证提案', questions: [], concepts: structuredClone(project.concepts) };
     const before = JSON.stringify(project);
     for (const [mutate, expected] of [
-      [p => { p.projectId = 'another-project'; }, /跨项目/],
-      [p => { p.baseVersion--; }, /过期/],
-      [p => { p.concepts[0].evidenceLinks[0].evidenceId = 'unknown'; }, /未知证据/],
-      [p => { p.concepts[0].evidenceLinks[0].entityId = 'invented'; }, /实际返回实体/],
-      [p => { p.concepts[0].evidenceLinks[0].observedField = 'properties.invented'; }, /字段不存在/],
-      [p => { p.concepts[0].evidenceLinks[0].observedValue = 'invented value'; }, /实际返回不符/],
+      [p => { p.projectId = 'another-project'; }, /across projects/],
+      [p => { p.baseVersion--; }, /stale/],
+      [p => { p.concepts[0].evidenceLinks[0].evidenceId = 'unknown'; }, /Unknown evidence/],
+      [p => { p.concepts[0].evidenceLinks[0].entityId = 'invented'; }, /actually returned entity/],
+      [p => { p.concepts[0].evidenceLinks[0].observedField = 'properties.invented'; }, /field does not exist/],
+      [p => { p.concepts[0].evidenceLinks[0].observedValue = 'invented value'; }, /does not match the actual returned field/],
     ]) {
       const invalid = structuredClone(proposal); mutate(invalid);
       assert.throws(() => applyProposal(project, invalid), expected);
@@ -74,7 +77,7 @@ test('server contract rejects stale, cross-project, unknown or fabricated field 
     const stolen = structuredClone(project.evidence[0]); stolen.id = 'stolen'; stolen.projectId = 'other';
     project.evidence.push(stolen);
     const cross = structuredClone(proposal); cross.concepts[0].evidenceLinks[0].evidenceId = stolen.id;
-    assert.throws(() => applyProposal(project, cross), /跨项目/);
+    assert.throws(() => applyProposal(project, cross), /across projects/);
     project.evidence.pop();
     assert.doesNotThrow(() => validateProposal(project, proposal));
   } finally { await runtime.dispose(); }
@@ -87,11 +90,11 @@ test('literal constraints and mechanism structure are checked without claiming d
     const missing = structuredClone(proposal);
     missing.concepts[0].journey.forEach(s => { s.action = s.action.replaceAll('试穿', '体验'); });
     missing.concepts[0].productTouchpoints = ['普通体验'];
-    assert.throws(() => validateProposal(project, missing), /必须保留/);
+    assert.throws(() => validateProposal(project, missing), /must-keep/);
     const forbidden = structuredClone(proposal); forbidden.concepts[1].mechanism.description += '增加现场表演';
-    assert.throws(() => validateProposal(project, forbidden), /禁止项/);
+    assert.throws(() => validateProposal(project, forbidden), /excluded item/);
     const same = structuredClone(proposal); same.concepts[1].mechanism.organization = same.concepts[0].mechanism.organization;
-    assert.throws(() => validateProposal(project, same), /不同的参与组织/);
+    assert.throws(() => validateProposal(project, same), /distinct participation/);
     const renamed = structuredClone(proposal); renamed.concepts[0].mechanism.organization = 'team_based_tasks'; renamed.concepts[1].mechanism.organization = 'choice_based_tasks';
     assert.doesNotThrow(() => validateProposal(project, renamed));
     assert.doesNotThrow(() => validateProposal(project, { ...proposal, phase: 'insufficient_evidence', concepts: [] }));
@@ -189,22 +192,22 @@ test('HTTP attempt boundary blocks offline egress, endpoint escapes, redirects a
   let calls = 0;
   const fake = budgetedFetch(async (_url, options) => { calls++; assert.equal(options.redirect, 'error'); throw new Error('synthetic retryable response'); });
   const offline = createProject({ brief });
-  await assert.rejects(() => withoutNetwork(offline, () => fake('https://offline.invalid')), /离线模式/);
+  await assert.rejects(() => withoutNetwork(offline, () => fake('https://offline.invalid')), /Offline mode/);
   assert.equal(calls, 0);
   for (let index = 0; index < 2; index++) {
     const project = createProject({ brief, mode: 'live' });
     for (let attempt = 0; attempt < 6; attempt++) await assert.rejects(
       () => withHttpBudget(project, 'model', 'https://model.invalid', () => fake('https://model.invalid/v1', { redirect: 'follow' })), /synthetic retryable/);
-    await assert.rejects(() => withHttpBudget(project, 'model', 'https://model.invalid', () => fake('https://model.invalid/v1')), /总额度/);
+    await assert.rejects(() => withHttpBudget(project, 'model', 'https://model.invalid', () => fake('https://model.invalid/v1')), /budget is exhausted/);
     assert.equal(project.usage.modelHttpAttempts, 6);
   }
   const third = createProject({ brief, mode: 'live' });
-  await assert.rejects(() => withHttpBudget(third, 'model', 'https://model.invalid', () => fake('https://model.invalid')), /总额度/);
-  await assert.rejects(() => withHttpBudget(third, 'qloo', 'https://qloo.invalid', () => fake('https://other.invalid')), /端点/);
+  await assert.rejects(() => withHttpBudget(third, 'model', 'https://model.invalid', () => fake('https://model.invalid')), /budget is exhausted/);
+  await assert.rejects(() => withHttpBudget(third, 'qloo', 'https://qloo.invalid', () => fake('https://other.invalid')), /endpoint/);
   assert.equal(calls, 12);
   for (let attempt = 0; attempt < 6; attempt++) await assert.rejects(
     () => withHttpBudget(third, 'qloo', 'https://qloo.invalid', () => fake('https://qloo.invalid/v2/insights')), /synthetic retryable/);
-  await assert.rejects(() => withHttpBudget(third, 'qloo', 'https://qloo.invalid', () => fake('https://qloo.invalid')), /总额度/);
+  await assert.rejects(() => withHttpBudget(third, 'qloo', 'https://qloo.invalid', () => fake('https://qloo.invalid')), /budget is exhausted/);
   assert.equal(third.usage.qlooHttpAttempts, 6);
   assert.equal(serverUsage.modelHttpAttempts, 12);
   assert.equal(calls, 18);
@@ -212,7 +215,7 @@ test('HTTP attempt boundary blocks offline egress, endpoint escapes, redirects a
   for (let attempt = 0; attempt < 6; attempt++) await assert.rejects(
     () => withHttpBudget(fourth, 'qloo', 'https://qloo.invalid', () => fake('https://qloo.invalid/search?api_key=DO_NOT_RECORD')), /synthetic retryable/);
   const fifth = createProject({ brief, mode: 'live' });
-  await assert.rejects(() => withHttpBudget(fifth, 'qloo', 'https://qloo.invalid', () => fake('https://qloo.invalid')), /总额度/);
+  await assert.rejects(() => withHttpBudget(fifth, 'qloo', 'https://qloo.invalid', () => fake('https://qloo.invalid')), /budget is exhausted/);
   assert.equal(serverUsage.qlooHttpAttempts, 12);
   assert.equal(fourth.usage.qlooHttpAttempts, 6);
   assert.equal(calls, 24);
@@ -270,8 +273,9 @@ test('HTTP API returns authoritative state, continues same project/session and k
     assert.equal(config.body.modes.offline.available, true);
     assert.equal(config.body.modes.live.available, false);
     assert(config.body.modes.live.missing.includes('ART_MODEL_ID'));
-    assert.equal((await localRequest(port, 'POST', '/api/projects', { brief, mode: 'live' })).status, 409);
-    const created = await localRequest(port, 'POST', '/api/projects', { brief: { ...brief, venue: '' }, mode: 'offline', scenario: 'sufficient' });
+    const gated = await localRequest(port, 'POST', '/api/projects', creationInput({ brief, mode: 'live' }));
+    assert.equal((await localRequest(port, 'POST', `/api/projects/${gated.body.project.id}/start`, {})).status, 409);
+    const created = await createAndStart((...args) => localRequest(port, ...args), { brief: { ...brief, venue: '' }, mode: 'offline', scenario: 'sufficient' });
     assert.equal(created.status, 202);
     const first = await settled(port, created.body.project.id);
     assert.equal(first.status.phase, 'needs_input');
@@ -303,7 +307,7 @@ test('serial clarification rejects zero or multiple questions without applying s
   assert.doesNotThrow(() => validateProposal(project, proposal));
   const before = JSON.stringify(project);
   for (const questions of [[], [...proposal.questions, { field: 'budget', text: '预算范围？' }]]) {
-    assert.throws(() => applyProposal(project, { ...proposal, questions }), /仅包含一个问题/);
+    assert.throws(() => applyProposal(project, { ...proposal, questions }), /exactly one question/);
     assert.equal(JSON.stringify(project), before);
   }
 });
@@ -389,25 +393,31 @@ test('a run failure blocks later live cases at the server before creating a proj
   try {
     const result = await localRequest(app.server.address().port, 'POST', '/api/projects', { brief, mode: 'live' });
     assert.equal(result.status, 409);
-    assert.match(result.body.error, /不能启动后续真实案例/);
+    assert.match(result.body.error, /Further live cases cannot start/);
     assert.equal(app.projects.size, 0);
   } finally { await app.dispose(); resetValidationRun(); }
 });
 
-test('a live task accepted before the run stops is blocked again when its queue entry starts', async () => {
+test('a live task accepted before the run stops is blocked again when its queue entry starts', async t => {
   resetValidationRun();
   const env = { ART_ENABLE_LIVE: 'true', ART_MODEL_PROVIDER: 'synthetic', ART_MODEL_ID: 'synthetic',
     ART_MODEL_API: 'unsupported-no-network', ART_MODEL_BASE_URL: 'https://model.invalid', ART_MODEL_API_KEY: 'synthetic',
     QLOO_API_URL: 'https://qloo.invalid', QLOO_API_KEY: 'synthetic' };
   const app = isolatedServer({ env });
-  // Reproduce the acceptance/queue-entry race without a model or external HTTP:
-  // the earlier task stops the run after this request's arrival gate passed.
-  const store = app.projects.set.bind(app.projects);
-  app.projects.set = (id, project) => { validationRun.liveStopped = true; return store(id, project); };
   await new Promise(done => app.server.listen(0, '127.0.0.1', done));
   try {
-    const created = await localRequest(app.server.address().port, 'POST', '/api/projects', { brief, mode: 'live' });
-    assert.equal(created.status, 202);
+    const created = await localRequest(app.server.address().port, 'POST', '/api/projects', creationInput({ brief, mode: 'live' }));
+    // Stop after start's arrival gate, when its busy snapshot is saved, before
+    // the queued runtime begins. No model or external HTTP is involved.
+    const rename = fs.renameSync;
+    t.mock.method(fs, 'renameSync', (source, destination) => {
+      const result = rename(source, destination);
+      if (String(destination).endsWith(`${created.body.project.id}.json`)) validationRun.liveStopped = true;
+      return result;
+    });
+    syncBuiltinESMExports();
+    t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+    assert.equal((await localRequest(app.server.address().port, 'POST', `/api/projects/${created.body.project.id}/start`, {})).status, 202);
     const project = await settled(app.server.address().port, created.body.project.id);
     assert.equal(project.status.phase, 'error');
     assert.equal(project.runtime.failure.code, 'VALIDATION_RUN_STOPPED');

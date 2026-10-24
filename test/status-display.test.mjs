@@ -13,7 +13,7 @@ const saved = process.env.ART_STATUS_FIXTURE
     revisionRequest: { status: 'completed' }, usage: { modelHttpAttempts: 8, qlooHttpAttempts: 4 },
     runtime: { feedback: { code: 'REVISION_RESPONSE_SAVED', reason: '正式版本未改变，须由用户审查批准。',
       nextAction: '继续提出 pending 待审修改', remainingBudget: { modelHttpAttempts: 2, qlooHttpAttempts: 0, queryStopped: true } } } };
-const config = (enabled, available = enabled) => ({ modes: { live: { enabled, available, missing: available ? [] : ['example'] } } });
+const config = (enabled, available = enabled) => ({ production: false, modes: { live: { enabled, available, missing: available ? [] : ['example'] } } });
 function ui() {
   const elements = new Map();
   const get = id => {

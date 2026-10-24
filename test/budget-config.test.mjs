@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createAndStart, creationInput } from './project-http.mjs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -102,7 +103,7 @@ test('30 model and 20 Qloo sends are counted before fetch; the next sends are lo
   for (const [kind, limit] of [['model', 30], ['qloo', 20]]) {
     for (let i = 0; i < limit; i++) await wire.send(project, kind);
     const before = wire.sent;
-    await assert.rejects(wire.send(project, kind), /总额度/);
+    await assert.rejects(wire.send(project, kind), /budget is exhausted/);
     assert.equal(wire.sent, before, 'rejection is not a sent HTTP request');
   }
   assert.equal(wire.sent, 50);
@@ -132,7 +133,7 @@ test('failed sends and retries consume the same configured budget', async t => {
   const project = freshProject(); budget.bind(project, true);
   const wire = sender(async () => { throw new Error('synthetic network failure'); });
   for (let i = 0; i < 30; i++) await assert.rejects(wire.send(project), /synthetic network failure/);
-  await assert.rejects(wire.send(project), /总额度/);
+  await assert.rejects(wire.send(project), /budget is exhausted/);
   assert.equal(wire.sent, 30);
   assert.equal(project.usage.modelHttpAttempts, 30);
   assert.equal(transport.remainingBudget(project).modelHttpAttempts, 0);
@@ -155,7 +156,7 @@ test('untrusted fields cannot raise limits; historical and unbound projects keep
   const wire = sender();
   const historical = freshProject(); budget.bind(historical);
   for (let i = 0; i < 6; i++) await wire.send(historical);
-  await assert.rejects(wire.send(historical), /总额度/);
+  await assert.rejects(wire.send(historical), /budget is exhausted/);
   assert.equal(wire.sent, 6);
 });
 
@@ -167,8 +168,8 @@ test('restricted validation only tightens configured limits and diagnostic remai
     project.runtime.validation = { modelHttpLimit: limit, qlooHttpLimit: 0 };
     assert.deepEqual(transport.remainingBudget(project).caseLimits, counts(limit, 0));
     for (let i = 0; i < limit; i++) await wire.send(project);
-    await assert.rejects(wire.send(project), /总额度/);
-    await assert.rejects(wire.send(project, 'qloo'), /总额度/);
+    await assert.rejects(wire.send(project), /budget is exhausted/);
+    await assert.rejects(wire.send(project, 'qloo'), /budget is exhausted/);
   }
   let sends = 0;
   const diagnostic = transport.createDiagnosticFetch(async () => { sends++; return new Response('{}'); });
@@ -186,9 +187,9 @@ test('unbound trusted validation retains its original ten-model zero-Qloo allowa
   const project = freshProject();
   project.runtime.validation = { modelHttpLimit: 10, qlooHttpLimit: 0 };
   const wire = sender();
-  await assert.rejects(wire.send(project, 'qloo'), /总额度/);
+  await assert.rejects(wire.send(project, 'qloo'), /budget is exhausted/);
   for (let i = 0; i < 10; i++) await wire.send(project);
-  await assert.rejects(wire.send(project), /总额度/);
+  await assert.rejects(wire.send(project), /budget is exhausted/);
   assert.deepEqual(transport.remainingBudget(project).caseLimits, counts(10, 0));
   assert.equal(wire.sent, 10);
   assert.equal(project.usage.modelHttpAttempts, 10);
@@ -201,9 +202,9 @@ test('trusted validation cannot expand a bound two-model allowance', async t => 
   project.runtime.validation = { modelHttpLimit: 10, qlooHttpLimit: 0 };
   const wire = sender();
   assert.deepEqual(transport.remainingBudget(project).caseLimits, counts(2, 0));
-  await assert.rejects(wire.send(project, 'qloo'), /总额度/);
+  await assert.rejects(wire.send(project, 'qloo'), /budget is exhausted/);
   await wire.send(project); await wire.send(project);
-  await assert.rejects(wire.send(project), /总额度/);
+  await assert.rejects(wire.send(project), /budget is exhausted/);
   assert.equal(wire.sent, 2);
   assert.equal(project.usage.modelHttpAttempts, 2);
   assert.equal(project.usage.qlooHttpAttempts, 0);
@@ -227,7 +228,7 @@ test('Qloo exhaustion stops all queries while model cleanup uses only remaining 
   assert.equal(saved.liveStopped, false);
   const wire = sender();
   for (let i = 0; i < 30; i++) await wire.send(project);
-  await assert.rejects(wire.send(project), /总额度/);
+  await assert.rejects(wire.send(project), /budget is exhausted/);
   assert.equal(wire.sent, 30);
 });
 
@@ -307,7 +308,7 @@ test('project persistence failure prevents the send and preserves the stop state
   const { budget, dataDir } = fixture(t, configured, () => { throw new Error('synthetic project disk failure'); });
   const project = freshProject(); budget.bind(project, true);
   const wire = sender();
-  await assert.rejects(wire.send(project), /额度无法保存/);
+  await assert.rejects(wire.send(project), /budget could not be saved/);
   assert.equal(wire.sent, 0);
   assert.equal(transport.validationRun.liveStopped, true);
   const saved = JSON.parse(readFileSync(ledgerPath(dataDir), 'utf8'));
@@ -329,7 +330,7 @@ test('local HTTP reports configured limits and ignores client budget injection w
     assert.equal(config.status, 200);
     assert.deepEqual(config.body.limits, counts(30, 20));
     assert.deepEqual(config.body.serverLimits, counts(30, 20));
-    const created = await local('POST', '/api/projects', { mode: 'offline', brief: { request: 'Synthetic offline budget API test' },
+    const created = await createAndStart(local, { mode: 'offline', brief: { request: 'Synthetic offline budget API test' },
       limits: counts(1000, 1000), httpBudget: { limits: counts(1000, 1000) },
       runtime: { validation: { modelHttpLimit: 1000, qlooHttpLimit: 1000 } } });
     assert.equal(created.status, 202);
@@ -381,12 +382,12 @@ test('server shutdown rejects new projects while draining a reserved model reque
     await new Promise(done => app.server.listen(0, '127.0.0.1', done));
     const port = app.server.address().port;
     const payload = { mode: 'live', brief: { request: 'Synthetic shutdown boundary' } };
-    assert.equal((await localRequest(port, 'POST', '/api/projects', payload)).status, 202);
+    assert.equal((await createAndStart((...args) => localRequest(port, ...args), payload)).status, 202);
     await Promise.race([started, new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error('synthetic model request did not start')), 10000);
     })]);
     disposing = app.dispose();
-    const next = await localRequest(port, 'POST', '/api/projects', payload)
+    const next = await localRequest(port, 'POST', '/api/projects', creationInput(payload))
       .then(response => ({ response }), error => ({ error }));
     if (next.error) assert(['ECONNREFUSED', 'ECONNRESET'].includes(next.error.code), next.error.message);
     else assert.equal(next.response.status, 503, 'closing server must not accept another project');

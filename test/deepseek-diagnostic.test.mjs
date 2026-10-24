@@ -59,8 +59,8 @@ test('one-request guard rejects a second model request, all Qloo requests and re
   });
   const options = { method: 'POST', body: JSON.stringify({ model: 'deepseek-flash', messages: [], stream: true }) };
   await transport.fetch('https://api.deepseek.com/chat/completions', options);
-  await assert.rejects(transport.fetch('https://api.deepseek.com/chat/completions', options), /只允许一次/);
-  await assert.rejects(transport.fetch('https://hackathon.api.qloo.com/search'), /所有 Qloo/);
+  await assert.rejects(transport.fetch('https://api.deepseek.com/chat/completions', options), /permits one/);
+  await assert.rejects(transport.fetch('https://hackathon.api.qloo.com/search'), /all Qloo/);
   assert.equal(executions, 1);
   assert.equal(transport.ledger.modelHttpAttempts, 1);
   assert.equal(transport.ledger.qlooHttpAttempts, 0);
@@ -77,7 +77,7 @@ test('one-request reservation is atomic for parallel Request inputs and rejects 
   assert.equal(executions, 1);
   const other = createDiagnosticFetch(async () => { assert.fail('unapproved model cannot reach fetch'); });
   await assert.rejects(other.fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST', body: JSON.stringify({ model: 'other-model' }) }), /未批准/);
+    method: 'POST', body: JSON.stringify({ model: 'other-model' }) }), /unapproved/);
   assert.equal(other.ledger.modelHttpAttempts, 0);
 });
 

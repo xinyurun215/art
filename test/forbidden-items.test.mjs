@@ -11,7 +11,8 @@ function fixture(brief = {}) {
   const project = createProject({ brief: { request: '本地雨格禁用项测试', mustKeep: ['试握', '开合'], avoid, ...brief } });
   const contact = project.brief.mustKeep.join('和');
   const concepts = ['scheduled', 'self_paced'].map(id => ({ id, title: id, coreClaim: '体验产品',
-    mechanism: { organization: id, description: '自主完成产品体验' },
+    mechanism: { organization: id, description: id === 'scheduled'
+      ? 'Staff guide a group through timed product tasks' : 'Visitors independently choose product tasks' },
     journey: [{ stage: '到场', action: '领取任务卡' }, { stage: '参与', action: contact },
       { stage: '离开', action: '带走体验记录' }],
     productTouchpoints: [contact], evidenceLinks: [], openQuestions: [], unverifiedEffects: ['效果未验证'] }));
