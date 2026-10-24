@@ -49,6 +49,44 @@
   const production = () => state.config?.production === true;
   const isCase = (project = state.project) => project?.provenance?.kind === 'completed_case';
   const readOnly = (project = state.project) => isCase(project) || (state.config?.production !== false && project && project.mode !== 'live');
+  const demoTranslationNote = 'English translation of the original official demo input and template text. Saved input and evidence are unchanged; query input keeps the recorded wording.';
+  const legacyDemo = {
+    request: '合成验收任务：为虚构运动鞋品牌「未定式」的新日常鞋款设计快闪。希望来访者通过身体参与和试穿理解产品，比较两种实质不同的参与方式。音乐、电影偏好只是待研究信号，不是真实受众画像。',
+    brand: '未定式 · 虚构运动鞋品牌（演示输入）', goal: '让来访者通过体验理解新鞋款，保留试穿',
+    references: ['独立音乐', '电影叙事'], venue: '上海，室内约 150 平方米，具体场地未确认',
+    budget: '8–12 万元；客户输入，未经报价验证', mustKeep: ['试穿'], avoid: ['强制注册、未经确认的版权与效果承诺']
+  };
+  const legacyAmbiguousRequest = '合成验收任务：为虚构运动鞋品牌「未定式」设计快闪。希望保留试穿，用音乐和电影作为研究线索。城市与场地还没想好，请先确认会影响方案的条件。';
+  function demoPresentation(project) {
+    if (project.mode !== 'offline' || isCase(project)) return project;
+    const ambiguous = project.brief?.request === legacyAmbiguousRequest;
+    const storedReferences = ['独立音乐、电影叙事', '客户提供的研究信号', '实体尚未核实'];
+    const storedReferenceShape = JSON.stringify(list(project.brief?.references)) === JSON.stringify(storedReferences);
+    const expected = { ...legacyDemo, ...(ambiguous ? { request: legacyAmbiguousRequest, venue: '', budget: '' } : {}),
+      ...(storedReferenceShape ? { references: storedReferences } : {}) };
+    if (!briefFields.every(field => JSON.stringify(list(project.brief?.[field])) === JSON.stringify(list(expected[field])))) return project;
+    const templateText = {
+      '试穿: staff help with the experience and collect a description of comfort.': 'try-on: staff help with the experience and collect a description of comfort.',
+      '试穿: each station has one product experience a person can finish alone.': 'try-on: each station has one product experience a person can finish alone.',
+      'The movement tasks include 试穿. People write down how it feels on site.': 'The movement tasks include try-on. People write down how it feels on site.',
+      'After 试穿, write a personal note. That note advances the story.': 'After try-on, write a personal note. That note advances the story.'
+    };
+    return { ...project, displayTranslation: demoTranslationNote,
+      brief: { ...demo, ...(ambiguous ? { request: 'Synthetic demo: design a pop-up for the fictional sneaker brand Weiding. Keep the try-on, and use music and film as research signals. The city and venue are not decided. Confirm the condition that would change the proposal.', venue: '', budget: '' } : {}),
+        ...(storedReferenceShape ? { references: ['independent music, film narrative', 'Client-provided research signals', 'Entities have not been verified'] } : {}) },
+      concepts: list(project.concepts).map(concept => ({ ...concept,
+        journey: list(concept.journey).map(step => ({ ...step, action: templateText[step.action] || step.action })),
+        productTouchpoints: list(concept.productTouchpoints).map(value => templateText[value] || value) })) };
+  }
+  function fixtureText(item, value) {
+    if (!item?.synthetic || item.source !== 'local:fixtures/culture-signals.json') return value;
+    const translations = {
+      '合成数据；虚构实体，非 Qloo 数据、非真实受众画像或活动效果证据。': 'Synthetic data; fictional entities, not Qloo data, a real audience profile, or evidence of event effects.',
+      '哪些文化信号能够影响参与组织与产品接触方式？': 'Which cultural signals could change participation and product contact?',
+      '合成样本，未解析真实实体': 'Synthetic sample; real entities have not been resolved'
+    };
+    return Object.hasOwn(translations, value) ? `${translations[value]} (English translation of recorded demo text.)` : value;
+  }
   const isBusy = () => state.pending || (!readOnly() && (state.project?.status?.phase === 'busy' || state.project?.revisionRequest?.status === 'running'));
   const conceptLetter = (project, id) => {
     const index = list(project.concepts).findIndex((concept) => concept.id === id);
@@ -212,7 +250,7 @@
   function renderContext(project) {
     const brief = project.brief || {};
     const rows = [['Activity goal', brief.goal], ['City / venue', brief.venue], ['Budget · client input', brief.budget], ['Must keep', brief.mustKeep], ['Do not / avoid', brief.avoid], ['Cultural references · unverified signals', brief.references]];
-    setHTML($('project-context'), `<details class="context-disclosure" data-key="context-${esc(project.id)}"><summary><strong>Brief and limits</strong><span>${list(brief.mustKeep).length ? `Must keep: ${esc(list(brief.mustKeep).join(' · '))}` : 'See the client input and open conditions'}</span></summary><section class="context-card" aria-label="Current project brief"><div class="context-lead"><span class="eyebrow">Provided by the client · not independently verified</span><p>${display(brief.request)}</p></div><dl class="context-grid">${rows.map(([name, value]) => `<div class="context-item ${nonempty(value) ? '' : 'unknown'}"><dt>${esc(name)}</dt><dd>${nonempty(value) ? esc(list(value).map(asText).join('; ')) : 'Unknown / to be confirmed'}</dd></div>`).join('')}</dl></section></details>`);
+    setHTML($('project-context'), `<details class="context-disclosure" data-key="context-${esc(project.id)}"><summary><strong>Brief and limits</strong><span>${list(brief.mustKeep).length ? `Must keep: ${esc(list(brief.mustKeep).join(' · '))}` : 'See the client input and open conditions'}</span></summary><section class="context-card" aria-label="Current project brief">${project.displayTranslation ? `<p class="form-note">${esc(project.displayTranslation)}</p>` : ''}<div class="context-lead"><span class="eyebrow">Provided by the client · not independently verified</span><p>${display(brief.request)}</p></div><dl class="context-grid">${rows.map(([name, value]) => `<div class="context-item ${nonempty(value) ? '' : 'unknown'}"><dt>${esc(name)}</dt><dd>${nonempty(value) ? esc(list(value).map(asText).join('; ')) : 'Unknown / to be confirmed'}</dd></div>`).join('')}</dl></section></details>`);
   }
 
   function renderMessages(project) {
@@ -289,7 +327,7 @@
       ['Query time', typeof item.queriedAt === 'string' && !Number.isNaN(Date.parse(item.queriedAt)) ? item.queriedAt : 'Unknown'],
       ['Venue', known(item.context?.venue)],
       ['Geographic filter', notApplied ? 'Not applied' : filter === 'Unknown' ? 'Unknown' : `Applied: ${filter}`],
-      ['Reference / resolution status', known(item.context?.referenceStatus)],
+      ['Reference / resolution status', known(fixtureText(item, item.context?.referenceStatus))],
       ['Query input', Object.keys(queryInput).length ? JSON.stringify(queryInput) : 'Unknown'],
     ];
   }
@@ -310,9 +348,9 @@
       const proxy = item.proxyConfirmation || item.context?.proxyConfirmation;
       return `<article class="evidence-card" id="evidence-${esc(item.id)}" aria-labelledby="evidence-title-${index}">
         <div class="evidence-card-header"><span class="evidence-index">${index + 1}</span><h4 class="evidence-title" id="evidence-title-${index}">${esc(item.title || `${kind} record`)}</h4><span class="evidence-badge${item.synthetic ? ' synthetic' : ''}">${badge}</span></div>
-        <p class="evidence-query">${display(item.query?.designQuestion || (typeof item.query === 'string' ? item.query : 'Design question was not recorded'))}</p>
+        <p class="evidence-query">${display(fixtureText(item, item.query?.designQuestion) || (typeof item.query === 'string' ? item.query : 'Design question was not recorded'))}</p>
         <div class="evidence-body"><section class="evidence-block"><h5>Input</h5><ul class="entity-list">${list(item.inputReferences).length ? list(item.inputReferences).map(entityMarkup).join('') : `<li>${unknown}</li>`}</ul></section><section class="evidence-block"><h5>${kind} returned · ${list(item.returnedEntities).length}</h5><ul class="entity-list">${list(item.returnedEntities).length ? list(item.returnedEntities).map(entityMarkup).join('') : `<li>${unknown}</li>`}</ul></section></div>
-        <div class="evidence-boundary"><span class="boundary-label">Boundary</span><span>${display(item.boundary)}</span></div>
+        <div class="evidence-boundary"><span class="boundary-label">Boundary</span><span>${display(fixtureText(item, item.boundary))}</span></div>
         <dl class="evidence-meta"><div><dt>Source</dt><dd>${sourceMarkup(item.source)}</dd></div><div><dt>Queried</dt><dd>${formatTime(item.queriedAt)}</dd></div>${nonempty(proxy) ? `<div><dt>Proxy and confirmation</dt><dd>${esc(asText(proxy))}</dd></div>` : ''}</dl>
         <details class="evidence-detail" data-key="query-${esc(item.id)}"><summary>Query context</summary><dl class="evidence-meta">${evidenceContext(item).map(([label, value]) => `<div><dt>${label}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl></details>
       </article>`;
@@ -364,7 +402,7 @@
       ${compact && valid ? `<details class="evidence-detail" data-key="exact-${esc(key)}"><summary>Exact saved field and value</summary>${exact}</details>` : exact}
       <p class="trace-step"><span class="trace-label">${valid ? 'Proposal summary / interpretation' : label}</span>${display(link.observation)}</p>
       ${compact ? '' : `<p class="trace-step"><span class="trace-label">Design decision · proposal judgment</span>${display(link.inspiration)}</p>`}
-      ${target?.synthetic ? `<p class="inference-warning">${display(target.boundary || 'Synthetic data; not live Qloo evidence or proof of effects.')}</p>` : ''}
+      ${target?.synthetic ? `<p class="inference-warning">${display(fixtureText(target, target.boundary) || 'Synthetic data; not live Qloo evidence or proof of effects.')}</p>` : ''}
       ${numeric ? '<p class="inference-warning">This is a numeric association. By itself it does not prove a story or a way of participating.</p>' : ''}
       ${!compact && !valid && nonempty(link.observedField) ? `<p class="ref-field">Unverified reference field <code>${esc(link.observedField)}</code></p>` : ''}
       ${!compact && supportingDescriptions.length ? `<details class="evidence-detail" data-key="description-${esc(key)}"><summary>Description of the same entity · not tied to this claim</summary><div class="evidence-detail-content">${supportingDescriptions.map((ref) => `<a class="evidence-link" href="#evidence-${esc(ref.card.id)}">Entity description ↗</a><p>${esc(ref.value)}</p>`).join('')}</div></details>` : ''}
@@ -379,7 +417,7 @@
     const numeric = link.basis === 'affinity' || /affinity|popularity|score|rank|percentile/i.test(link.observedField || '');
     return `${valid ? `- ${label}\n  Source: ${trace}\n\n\`\`\`json\n${exactValue}\n\`\`\`\n- Proposal summary / interpretation: ${text(link.observation)}`
       : `- ${label}: ${text(link.observation)}\n  Source: ${trace}`}${withJudgment ? `\n- Design judgment: ${text(link.inspiration)}` : ''}${card?.synthetic
-      ? `\n- Synthetic boundary: ${text(card.boundary || 'Synthetic data; not live Qloo evidence or proof of effects.')}` : ''}${numeric
+      ? `\n- Synthetic boundary: ${text(fixtureText(card, card.boundary) || 'Synthetic data; not live Qloo evidence or proof of effects.')}` : ''}${numeric
       ? '\n- This is a numeric association. By itself it does not prove a story or a way of participating.' : ''}`;
   }
 
@@ -418,7 +456,7 @@
       return `<article class="concept-card ${selected ? 'concept-selected' : ''}" aria-labelledby="concept-title-${index}">
         <div class="concept-topline"><span class="concept-letter">${String.fromCharCode(65 + index)}</span><span class="concept-sheet-label">${selected ? 'Selected direction' : 'Concept direction'}<span class="mechanism-label">${esc(organizationLabel)}</span></span><span class="concept-state">${selected ? 'Selected' : ''}</span></div>
         <div class="concept-intro"><h4 class="concept-title" id="concept-title-${index}">${display(concept.title)}</h4>${draftNotice}</div>
-        <div class="concept-select-row"><button type="button" class="select-concept ${selected ? 'selected' : ''}" data-select-concept="${esc(concept.id)}" aria-pressed="${selected}">${selected ? 'Selected · open the revision' : `Choose concept ${String.fromCharCode(65 + index)}`}<span aria-hidden="true">↗</span></button></div>
+        <div class="concept-select-row"><button type="button" class="select-concept ${selected ? 'selected' : ''}" data-select-concept="${esc(concept.id)}" aria-pressed="${selected}">${readOnly(project) ? selected ? 'Selected concept · read only' : `Concept ${String.fromCharCode(65 + index)} · read only` : selected ? 'Selected · open the revision' : `Choose concept ${String.fromCharCode(65 + index)}`}<span aria-hidden="true">↗</span></button></div>
         <section class="concept-part concept-outcome"><h5 class="part-title">Cultural evidence</h5>${links.map((link, linkIndex) => referenceMarkup(project, link, `${concept.id}-main-${linkIndex}`, true)).join('') || '<p class="unknown-note">Unknown · no saved evidence link. The proposal is unverified.</p>'}</section>
         <section class="concept-part concept-outcome"><h5 class="part-title">Design decision · proposal judgment</h5>${links.map(link => `<p class="trace-step">${display(link.inspiration)}</p>`).join('')}<p class="mechanism-description">${display(concept.mechanism?.description)}</p><p class="concept-duration">Organization: ${display(organizationLabels[concept.mechanism?.organization] || concept.mechanism?.organization)}. This is a proposal judgment, not a design proved by Qloo.</p></section>
         <section class="concept-part concept-outcome"><h5 class="part-title">What visitors do</h5><ol class="journey">${list(concept.journey).map(step => `<li><span class="journey-stage">${display(step.stage)}</span><p class="journey-action">${display(step.action)}</p></li>`).join('') || `<li>${unknown}</li>`}</ol></section>
@@ -559,6 +597,7 @@
 
   // Exports confirmed content, pending drafts and evidence summaries; raw provider responses stay out.
   function proposalMarkdown(project) {
+    project = demoPresentation(project);
     const line = (value) => (value === null || value === undefined || value === '' ? 'Unknown'
       : typeof value === 'object' ? JSON.stringify(value) : String(value)).replace(/\s+/g, ' ').trim();
     const items = (values, empty = 'None') => list(values).length ? list(values).map((value) => `- ${line(value)}`).join('\n') : `- ${empty}`;
@@ -578,6 +617,7 @@
       `- Project: ${line(project.id)}\n- Confirmed version: v${line(project.version)}\n- Current status: ${line(phaseLabels[project.status?.phase])}\n- Mode: ${project.mode === 'offline' ? 'Offline simulation with synthetic fixtures. Not a live model or Qloo result.' : 'Live model and Qloo'}\n- Exported: ${new Date().toISOString()}\n- Nature: an early experience proposal, not a build plan. It does not guarantee budget, venue safety, rights, or results.`,
       `## Brief and limits (client-provided, not independently verified)\nOptional fields below show separately recorded details. Empty fields do not establish that the original request or clarifications contain no conditions.\n- Original request: ${line(brief.request)}\n- Brand / product: ${line(brief.brand)}\n- Activity goal: ${line(brief.goal)}\n- Cultural references (signals to research, not an audience profile): ${joined(brief.references)}\n- City / venue: ${line(brief.venue)}\n- Budget: ${line(brief.budget)}\n- Must keep: ${joined(brief.mustKeep, 'No items recorded here; review the original request and clarifications.')}\n- Do not / avoid: ${joined(brief.avoid, 'No items recorded here; review the original request and clarifications.')}`,
     ];
+    if (project.displayTranslation) sections.splice(1, 0, project.displayTranslation);
     if (isCase(project)) sections.splice(1, 0, `## Recorded completed case · read only\n- Recorded generation date: ${line(project.provenance.recordedAt)}\n- Accepted at: ${line(project.provenance.acceptedAt)}\n${line(project.provenance.description)}\n${line(project.provenance.presentationNote)}\n${line(project.provenance.scopeNote)}`);
     if (list(project.clarifications).length) sections.push(`## Clarifications\n${project.clarifications.map((record) => `- Question: ${line(record.question)}\n  Answer: ${line(record.answer)}`).join('\n')}`);
     sections.push(`## Open questions\n${items(list(project.questions).map((question) => typeof question === 'string' ? question : question.text))}`);
@@ -599,7 +639,7 @@
     if (accepted) sections.push(`## What changed · accepted record for confirmed v${line(accepted.confirmedVersion)}\n${changesText(accepted)}\n### Still required · current client requirements\n${items(brief.mustKeep, 'No must-keep items recorded')}\n### Current locks\n${items(locked.map(field => revisionFields[field] || field), 'No current locks recorded')}\nThese are current requirements and locks, not a claim that feasibility or effects have been verified.`);
     sections.push(`## Version history\n${[...list(project.versionHistory).map((record) => `- v${line(record.version)} confirmed at ${line(record.confirmedAt)}${record.revisionId ? ', created from an accepted change' : ''}`),
       ...list(project.revisions).map((revision) => `- Draft ${line(revision.revisionNumber || 1)}: ${status[revision.status] || line(revision.status)}${revision.confirmedVersion ? ` → v${revision.confirmedVersion}` : ''} · ${line(revision.summary)}`)].join('\n') || '- None'}`);
-    sections.push(`## Cultural evidence\n${list(project.evidence).map((item, index) => `<a id="evidence-${encodeURIComponent(item.id)}"></a>\n### Evidence ${index + 1}${item.synthetic ? ' (synthetic fixture, not live evidence)' : ''}\n- Evidence id: ${line(item.id)}\n- Query question: ${line(item.query?.designQuestion)}\n- Input entities: ${list(item.inputReferences).map(entity).join('; ') || 'Unknown'}\n- Returned entities: ${list(item.returnedEntities).map(entity).join('; ') || 'Unknown'}\n- Source: ${line(item.source)}\n${evidenceContext(item).map(([label, value]) => `- ${label}: ${line(value)}`).join('\n')}\n- Boundary: ${line(item.boundary)}`).join('\n\n') || 'No evidence yet'}`);
+    sections.push(`## Cultural evidence\n${list(project.evidence).map((item, index) => `<a id="evidence-${encodeURIComponent(item.id)}"></a>\n### Evidence ${index + 1}${item.synthetic ? ' (synthetic fixture, not live evidence)' : ''}\n- Evidence id: ${line(item.id)}\n- Query question: ${line(fixtureText(item, item.query?.designQuestion))}\n- Input entities: ${list(item.inputReferences).map(entity).join('; ') || 'Unknown'}\n- Returned entities: ${list(item.returnedEntities).map(entity).join('; ') || 'Unknown'}\n- Source: ${line(item.source)}\n${evidenceContext(item).map(([label, value]) => `- ${label}: ${line(value)}`).join('\n')}\n- Boundary: ${line(fixtureText(item, item.boundary))}`).join('\n\n') || 'No evidence yet'}`);
     sections.push('## Limits of use\n- Cultural affinity is only the association in this request. It is not an aesthetic score, a quality score, or an effect prediction.\n- This file does not include the raw Qloo response.');
     return `${sections.join('\n\n')}\n`;
   }
@@ -609,6 +649,7 @@
     const changedProject = state.project?.id !== project.id;
     const versionChanged = !changedProject && state.project?.version !== project.version;
     state.project = project;
+    project = demoPresentation(project);
     $('brief-disclosure').hidden = isCase(project);
     $('view-completed-case').hidden = isCase(project);
     $('create-own-project').hidden = !isCase(project);
@@ -922,7 +963,7 @@
     const token = ++state.pollToken;
     api(`/api/projects/${encodeURIComponent(existingId)}`).then(({ project }) => {
       if (token !== state.pollToken) return;
-      fillBrief(project.brief);
+      fillBrief(demoPresentation(project).brief);
       $('mode').value = project.mode === 'live' ? 'live' : 'offline';
       updateMode();
       renderProject(project);
